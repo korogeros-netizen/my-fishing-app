@@ -5,106 +5,105 @@ import requests
 import numpy as np
 from datetime import datetime, timedelta
 
-# --- 1. スマホ特化型・極限視認性CSS ---
-st.set_page_config(page_title="TACTICAL NAVI", layout="centered") # スマホはcenteredが基本
+# --- 1. スマホ完全対応・重厚インテリジェンスCSS ---
+st.set_page_config(page_title="TACTICAL NAVI", layout="centered")
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
-    .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
+    .block-container { padding-top: 1rem !important; }
     
-    /* 時合表示を最上部に固定 */
-    .jiai-section { text-align: center; background: #000; padding: 10px; border-bottom: 2px solid #58a6ff; }
-    .stars-focus { font-size: 3rem; color: #f1e05a; line-height: 1; }
-    .status-text { font-size: 1.1rem; color: #58a6ff; font-weight: bold; }
+    /* 設定エリア */
+    .stTextInput, .stSelectbox, .stDateInput, .stTimeInput { margin-bottom: -10px !important; }
 
-    /* 推奨おもりバッジ（スマホで一目でわかる） */
-    .weight-banner-mobile {
-        background: #ef4444; color: white; padding: 12px; border-radius: 5px;
-        text-align: center; font-size: 1.5rem; font-weight: bold; margin: 15px 0;
+    /* 時合：ゴールドの重厚感 */
+    .jiai-box { text-align: center; margin: 15px 0; border: 1px solid #30363d; padding: 10px; border-radius: 10px; background: #0d1117; }
+    .stars-large { font-size: 3.5rem; color: #f1e05a; line-height: 1.1; text-shadow: 0 0 20px rgba(241,224,90,0.6); }
+
+    /* 推奨ウェイト：警告バッジ */
+    .weight-alert {
+        background: linear-gradient(90deg, #991b1b, #450a0a);
+        color: #ffffff; padding: 18px; border-radius: 5px; text-align: center;
+        font-size: 1.8rem; font-weight: 900; border-left: 10px solid #ef4444; margin: 20px 0;
     }
 
-    /* 専門レポート（スマホの縦スクロールに最適化） */
-    .report-card-mobile {
-        background: #161b22; border: 1px solid #30363d; border-radius: 10px;
-        padding: 18px; margin-bottom: 15px;
+    /* 【復活】濃厚レポートレイアウト */
+    .intel-report {
+        background-color: #161b22; border: 1px solid #30363d; border-radius: 12px;
+        padding: 22px; margin-bottom: 25px; line-height: 2.3;
     }
-    .intel-tag { color: #8b949e; font-size: 0.75rem; font-weight: bold; border-left: 3px solid #58a6ff; padding-left: 8px; margin-bottom: 8px; display: block; }
-    .intel-body { line-height: 1.9; font-size: 1.05rem; color: #c9d1d9; }
-    .intel-body b { color: #58a6ff; }
-    
-    /* 下部に設定を隠す（現場では見ないため） */
-    .stExpander { border: none !important; background: #0d1117 !important; }
+    .intel-title { 
+        color: #ff7b72; font-size: 1rem; font-weight: 900; 
+        border-bottom: 2px solid #30363d; margin-bottom: 12px; display: block;
+    }
+    .intel-text { font-size: 1.1rem; color: #c9d1d9; text-align: justify; }
+    .intel-text b { color: #58a6ff; font-weight: bold; }
+    .intel-text u { color: #ffa657; text-decoration: underline; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. データ取得ロジック（専門性重視） ---
-def get_ocean_intel():
-    # 実際にはAPIだが、フォールバックでも「意味のある波形」を出す
-    t = [1.3 + 0.7 * np.sin((i - 7) * np.pi / 6) for i in range(24)]
-    return t, [0.6]*24, [1014]*24, [4.5]*24
+# --- 2. 司令塔（設定入力） ---
+with st.container():
+    c1, c2 = st.columns(2)
+    with c1:
+        point = st.text_input("📍 POINT", value="観音崎")
+        style = st.selectbox("🎣 STYLE", ["タイラバ (真鯛)", "ジギング", "スローピッチ"])
+    with c2:
+        date_in = st.date_input("📅 DATE", value=datetime.now())
+        time_in = st.time_input("⏰ TIME", value=datetime.now().time())
 
-y_tide, y_wave, y_press, y_wind = get_ocean_intel()
-h = datetime.now().hour
+# --- 3. 専門データ解析エンジン ---
+def get_advanced_marine_data():
+    # 実際にはAPIだが、フォールバックでも「意味のある波形」を出す
+    t = [1.2 + 0.8*np.sin((i-7)*np.pi/6) for i in range(24)]
+    return t, 1014.2, 4.8, 0.6
+
+y_tide, y_press, y_wind, y_wave = get_advanced_marine_data()
+h = time_in.hour
 delta = (y_tide[min(h+1, 23)] - y_tide[h]) * 100
 abs_d = abs(delta)
 
-# --- 3. 時合 & おもり計算 ---
+# --- 4. メイン出力 ---
+
+# ① 時合判定
 score = 2
-if 15 < abs_d < 30: score += 2
-if y_press[h] < 1011: score += 1
+if 18 < abs_d < 30: score += 2
+if y_press < 1011: score += 1
 stars = "★" * min(score, 5) + "☆" * (5 - min(score, 5))
-status_label = "CRITICAL: 激流荒食い" if abs_d > 18 else "STABLE: 捕食レンジ安定"
+st.markdown(f"<div class='jiai-box'><div class='stars-large'>{stars}</div></div>", unsafe_allow_html=True)
 
-base_w = 90 + (abs_d * 2.5) + (y_wind[h] * 4)
-rec_w = f"{int(base_w//10 * 10)}〜{int((base_w+40)//10 * 10)}g"
-
-# --- 4. メイン表示 (スマホ画面の並び) ---
-
-# ① 時合（トップ）
-st.markdown(f"""
-<div class='jiai-section'>
-    <div class='status-text'>{status_label}</div>
-    <div class='stars-focus'>{stars}</div>
-</div>
-""", unsafe_allow_html=True)
-
-# ② グラフ（コンパクト）
+# ② 潮流グラフ
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide, fill='tozeroy', line=dict(color='#00d4ff', width=3)))
-fig.add_vline(x=h, line_dash="dash", line_color="#ff4b4b")
-fig.update_layout(template="plotly_dark", height=130, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide, fill='tozeroy', line=dict(color='#00d4ff', width=4)))
+fig.add_vline(x=h + time_in.minute/60, line_dash="dash", line_color="#ef4444")
+fig.update_layout(template="plotly_dark", height=140, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
 st.plotly_chart(fig, use_container_width=True)
 
-# ③ 推奨おもり
-st.markdown(f"<div class='weight-banner-mobile'>推奨：{rec_w} (TG)</div>", unsafe_allow_html=True)
+# ③ 推奨ウェイト
+calc_w = 90 + (abs_d * 3.0) + (y_wind * 5.5)
+rec_w = f"{int(calc_w//10 * 10)}g 〜 {int((calc_w+60)//10 * 10)}g"
+st.markdown(f"<div class='weight-alert'>推奨：{rec_w} (TG)</div>", unsafe_allow_html=True)
 
-# ④ 専門レポート（以前の「詳しさ」をスマホサイズで）
+# ④ 【超濃厚】気象・海流・生理インテリジェンス（完全復刻版）
 st.markdown(f"""
-<div class="report-card-mobile">
-    <span class="intel-tag">気象・生物インテリジェンス</span>
-    <div class="intel-body">
-    気圧<b>{y_press[h]}hPa</b>。等圧線が収束し、表層の暖水塊が押し込まれることで<b>中層にサーモクライン（水温躍層）</b>が発生。真鯛の浮袋はこの気圧変化に敏感に反応し、レンジが浮上する傾向にある。底ベタに固執せず、中層15mまでを「食わせのゾーン」として広く探れ。
+<div class="intel-report">
+    <span class="intel-title">【深層気象】魚が浮くメカニズムとレンジ戦略</span>
+    <div class="intel-text">
+    現在気圧<b>{y_press}hPa</b>。{'低気圧の接近に伴い、海面にかかる大気圧が減少中。これにより真鯛の「浮袋」内の気体が膨張し、魚体は自然と上層へ押し上げられる生理的バイアスがかかっている。' if y_press < 1012 else '高気圧が張り出し、重い空気の蓋が海面を抑え込んでいる状態。魚の浮袋は収縮し、個体は底質にタイトに張り付く「底ベタ」の活性低下モードに陥りやすい。'}
+    <br><u>戦略的修正：</u>{'中層ベイトの密度が高まるため、底から15m、時には20mまで巻き上げろ。追尾してくる大型個体を「浮き上がりのレンジ」で仕留めるのだ。' if y_press < 1012 else '底から3m以内を執拗に叩け。砂煙を上げ、リアクションで口を使わせるフィネスなアプローチへシフトせよ。'}
     </div>
 </div>
 
-<div class="report-card-mobile">
-    <span class="intel-tag">流体力学・潮流戦術</span>
-    <div class="intel-body">
-    潮変化<b>{delta:+.1f}cm/h</b>。瀬にぶつかる<b>反転流</b>がベイトを攪乱中。ネクタイは水流を受け流す「極細ストレート」を選択し、リトリーブ時の自励振動を抑制せよ。着底後の「タッチ＆ゴー」を0.5秒以内で完遂し、リアクションバイトを誘発するのが本日の鉄則だ。
+<div class="intel-report">
+    <span class="intel-title">【流体力学】湧昇流と自励振動のコントロール</span>
+    <div class="intel-text">
+    潮流変化<b>{delta:+.1f}cm/h</b>。{point}の海盆から瀬に向かって潮が駆け上がる際、冷たい深層水が押し上げられる<b>「湧昇流（アップウェリング）」</b>が発生。この激流下では、タイラバのネクタイが過剰な水圧で暴れ、魚に違和感を与える「自励振動」のリスクがある。極細シリコンカーリーで<u>波動を極限まで抑制</u>し、シルエットだけで追わせる戦術を貫け。
     </div>
 </div>
 
-<div class="report-card-mobile">
-    <span class="intel-tag">操船・海況アドバイス</span>
-    <div class="intel-body">
-    風速<b>{y_wind[h]:.1f}m/s</b>。ドテラ流しの横流れが潮流を上回る。ライン角度が45度を超えると、ルアーが浮き上がり見切られるリスク増。サミングを多用して垂直性を担保せよ。波高<b>{y_wave[h]:.1f}m</b>による船の揺れは、ロッドを海面に向け、リーリングでテンションの抜けを完全に相殺しろ。
+<div class="intel-report">
+    <span class="intel-title">【操船・海況】風優位ドリフトと等速移動の死守</span>
+    <div class="intel-text">
+    風速<b>{y_wind}m/s</b>。ドテラ流しの船体速度が潮速を上回る「風優位」の状態。ライン角度が45度を超えると、ルアーが揚力を得て浮き上がり、狙いのレンジから逸脱する。波高<b>{y_wave}m</b>による船体のピッチングを、リールのハンドル速度で相殺しろ。海中のタイラバを<u>「機械的な等速移動」</u>に見せることだけが、本日の勝利への唯一の道だ。
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ⑤ 設定（一番下へ。普段は見ない）
-with st.expander("🛠 MISSION SETTINGS (タップで展開)"):
-    st.text_input("📍 POINT", value="観音崎")
-    st.selectbox("🎣 STYLE", ["タイラバ (真鯛)", "ジギング", "スローピッチ"])
-    st.date_input("📅 DATE")
-    st.time_input("⏰ TIME")
