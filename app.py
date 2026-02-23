@@ -12,48 +12,49 @@ if 'd_input' not in st.session_state: st.session_state.d_input = now_jst.date()
 if 't_input' not in st.session_state: st.session_state.t_input = now_jst.time()
 if 'target_style' not in st.session_state: st.session_state.target_style = "タイラバ (真鯛)"
 
-# --- 2. 視認性MAXのCSS ---
+# --- 2. 視認性MAXのCSS（スマホの黒背景対策） ---
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan", layout="wide")
 st.markdown("""
     <style>
     #MainMenu, footer, header, div[data-testid="stDecoration"] {visibility: hidden !important;}
 
-    /* 時合ランク：巨大で見やすく */
+    /* 時合ランク */
     .jiai-stars {
         font-size: 3.5rem !important;
-        color: #FFD700 !important; /* ゴールド */
+        color: #FFD700 !important;
         text-align: center;
-        text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
-        margin: 10px 0;
+        margin: 0px;
     }
     
-    /* 推奨ウェイト：現場で一番目立つ赤 */
+    /* 推奨ウェイト：赤バッジ */
     .weight-badge {
         background-color: #ff4b4b !important;
         color: white !important;
-        padding: 10px 25px !important;
-        border-radius: 40px !important;
+        padding: 10px 20px !important;
+        border-radius: 10px !important;
         font-weight: bold !important;
-        font-size: 1.6rem !important;
-        display: inline-block;
-        margin: 10px 0;
-        box-shadow: 0 5px 15px rgba(255, 75, 75, 0.5);
+        font-size: 1.5rem !important;
+        display: block;
+        text-align: center;
+        margin-bottom: 20px;
     }
 
-    /* レポートボックス：黒背景・白文字・2.0行間 */
+    /* レポートボックス：スマホでも絶対に見える「純白」文字 */
     .report-box {
-        background-color: #000000 !important;
-        padding: 25px !important;
+        background-color: #1a1a1a !important; /* 真っ黒より少し明るいグレー */
+        padding: 20px !important;
         border: 2px solid #00d4ff !important;
-        border-radius: 15px !important;
-        color: #FFFFFF !important;
-        line-height: 2.0 !important;
-        font-size: 1.15rem !important;
+        border-radius: 10px !important;
+        color: #FFFFFF !important; /* 絶対に白 */
+        line-height: 1.8 !important;
+        font-size: 1.1rem !important;
+        margin-top: 10px;
     }
-    .report-box strong { color: #00d4ff !important; font-size: 1.4rem; }
+    .report-box strong { color: #00d4ff !important; font-size: 1.3rem; }
     .report-box b { color: #ff4b4b !important; }
 
-    .block-container { padding-bottom: 150px !important; }
+    /* スマホでの余白 */
+    .block-container { padding: 1rem !important; padding-bottom: 100px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,7 +68,7 @@ with c2:
     st.session_state.d_input = st.date_input("📅 出船日", value=st.session_state.d_input)
     st.session_state.t_input = st.time_input("⏰ 狙い時間 (JST)", value=st.session_state.t_input)
 
-# --- 4. データ取得（API連携） ---
+# --- 4. データ取得（APIが0を返した時の保険付き） ---
 @st.cache_data(ttl=300)
 def fetch_marine_data(la, lo, d):
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gauge_height,wave_height&timezone=Asia%2FTokyo&start_date={d}&end_date={d}"
@@ -75,67 +76,73 @@ def fetch_marine_data(la, lo, d):
     try:
         m_r = requests.get(m_url).json()
         w_r = requests.get(w_url).json()
-        t = m_r['hourly'].get('tidal_gauge_height', [1.0 + 0.5*np.sin((i-6)*np.pi/6) for i in range(24)])
-        return t, m_r['hourly']['wave_height'], w_r['hourly']['pressure_msl'], w_r['hourly']['wind_speed_10m']
-    except: return [1.0]*24, [0.5]*24, [1013]*24, [3.0]*24
+        t = m_r['hourly'].get('tidal_gauge_height')
+        # データが真っ平ら(0)の場合のシミュレーション波形（ガード）
+        if not t or sum(t) == 0:
+            t = [1.2 + 0.6 * np.sin((i - 6) * np.pi / 6) for i in range(24)]
+        wv = m_r['hourly'].get('wave_height', [0.5]*24)
+        pr = w_r['hourly'].get('pressure_msl', [1013]*24)
+        wd = w_r['hourly'].get('wind_speed_10m', [3.0]*24)
+        return t, wv, pr, wd
+    except:
+        return [1.2 + 0.6 * np.sin((i - 6) * np.pi / 6) for i in range(24)], [0.5]*24, [1013]*24, [3.0]*24
 
-lat, lon = 35.2520, 139.7420
+lat, lon = 35.25, 139.74 # 観音崎
 y_tide, y_wave, y_press, y_wind = fetch_marine_data(lat, lon, st.session_state.d_input.strftime("%Y-%m-%d"))
 
-# --- 5. 解析 & ロジック（時合・おもり） ---
+# --- 5. 解析 ---
 h = st.session_state.t_input.hour
 delta = (y_tide[min(h+1, 23)] - y_tide[h]) * 100
-c_wave, c_press, c_wind = y_wave[h], y_press[h], y_wind[h]
 abs_d = abs(delta)
+c_wave, c_press, c_wind = y_wave[h], y_press[h], y_wind[h]
 
-# 時合★計算
+# ★地合い計算
 score = 1
-if 10 < abs_d < 25: score += 2  # 適度な潮
-if c_press < 1010: score += 1   # 低気圧好転
-if 2 < c_wind < 6: score += 1   # 適度な船の動き
+if 12 < abs_d < 25: score += 2
+if c_press < 1010: score += 1
+if 3 < c_wind < 7: score += 1
 stars = "★" * min(score, 5) + "☆" * (5 - min(score, 5))
 
 # おもり計算
 base_w = 80
-if abs_d > 20: base_w += 100
-elif abs_d > 12: base_w += 60
+if abs_d > 20: base_w += 80
+elif abs_d > 10: base_w += 40
 if c_wind > 7: base_w += 40
 rec_weight = f"{base_w}g 〜 {base_w + 40}g"
 
 # --- 6. 表示 ---
-st.markdown(f"<h1 style='text-align:center;'>📊 {st.session_state.target_area} 戦略解析</h1>", unsafe_allow_html=True)
 st.markdown(f"<div class='jiai-stars'>{stars}</div>", unsafe_allow_html=True)
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide, fill='tozeroy', line=dict(color='#00d4ff', width=3)))
 fig.add_vline(x=h + st.session_state.t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
-fig.update_layout(template="plotly_dark", height=200, margin=dict(l=0, r=0, t=0, b=0))
+fig.update_layout(template="plotly_dark", height=180, margin=dict(l=0, r=0, t=0, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
-# メトリック
 m1, m2, m3, m4 = st.columns(4)
-with m1: st.metric("潮位変化", f"{delta:+.1f} cm/h")
-with m2: st.metric("気圧", f"{c_press:.1f} hPa")
-with m3: st.metric("風速", f"{c_wind:.1f} m/s")
-with m4: st.metric("波高", f"{c_wave:.1f} m")
+with m1: st.metric("潮変化", f"{delta:+.1f}")
+with m2: st.metric("気圧", f"{c_press:.0f}")
+with m3: st.metric("風速", f"{c_wind:.1f}")
+with m4: st.metric("波高", f"{c_wave:.1f}")
 
-# --- 7. 【濃厚】キャプテンズ・レポート ---
+# --- 7. 【濃厚】キャプテンズ・レポート（スマホ対応版） ---
 st.divider()
-col_l, col_r = st.columns(2)
-with col_l:
-    st.markdown(f"""
-    <div class="report-box">
-        <strong>🚩 時合・潮流・おもり</strong><br>
-        <span class="weight-badge">推奨おもり：{rec_weight}</span><br>
-        【分析】潮位変化{delta:+.1f}cm/h。{'激流です。二枚潮を突き破る重いシンカーが必須。' if abs_d > 18 else '程よく潮が利き、魚の警戒心が解ける絶好のチャンス。'}
-        {st.session_state.target_style}においては、着底から巻き出しの瞬間の『重み』に全神経を集中させてください。おもりは{rec_weight}でボトム付近をタイトに狙うのが本日の鉄則です。
-    </div>
-    """, unsafe_allow_html=True)
-with col_r:
-    st.markdown(f"""
-    <div class="report-box">
-        <strong>🌊 海況・活性マネジメント</strong><br><br>
-        【現場環境】風速{c_wind:.1f}m/s。{'ドテラ流しで船が走りすぎるため、あて舵による制御か、ラインメンディングをこまめに。' if c_wind > 6 else '凪。キャストして広く探り、プレッシャーの低いエリアから魚を引き抜いてください。'}
-        【活性予測】気圧{c_press:.1f}hPa。{'低気圧効果で魚が浮いています。巻き上げ距離をいつもの1.5倍伸ばせ！' if c_press < 1010 else '高気圧。魚は底ベタです。底から1m以内を執拗に攻めて。'}
-    </div>
-    """, unsafe_allow_html=True)
+
+# 推奨おもりを最上部に
+st.markdown(f"<div class='weight-badge'>推奨おもり：{rec_weight}</div>", unsafe_allow_html=True)
+
+# 濃厚コメントを一気に表示（カラムを分けないことでスマホでの「消滅」を回避）
+t_comm = f"【潮流】水位変化{delta:+.1f}cm/h。{'激流です。二枚潮を突破するために重めのヘッドが不可欠。' if abs_d > 18 else '程よい動き。魚の捕食ラインにルアーが同期しやすい好条件。'} {st.session_state.target_style}では、着底直後の「巻き始め」で食わせるイメージを。底取りが遅れると見切られます。"
+w_comm = f"【環境】風速{c_wind:.1f}m/s。{'ドテラで船が走るため、シンカーを重くしバーチカルを維持せよ。' if c_wind > 6 else '凪。キャストして広範囲を探る釣りに分があります。'}波高{c_wave:.1f}m。"
+p_comm = f"【棚】気圧{c_press:.0f}hPa。{'低気圧で魚が浮いています。巻き上げをいつもの1.5倍伸ばせ！' if c_press < 1010 else '高気圧。魚は底ベタです。底から1m以内をタイトに。'}"
+
+st.markdown(f"""
+<div class="report-box">
+    <strong>🚩 キャプテンズ・インテリジェンス報告</strong><br><br>
+    {t_comm}<br><br>
+    {w_comm}<br><br>
+    {p_comm}<br><br>
+    <b>■ 現場戦術：</b>{'高速リトリーブでリアクションを狙え' if abs_d > 15 else '等速巻きでじっくり追わせろ'}<br>
+    <b>■ 狙い棚：</b>{'底から15mまで' if c_press < 1010 else '底から3m以内'}
+</div>
+""", unsafe_allow_html=True)
