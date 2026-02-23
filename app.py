@@ -6,11 +6,10 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # --- 1. アプリ基本設定 ---
-# スマホでの誤作動を防ぐため、あえてレイアウトを固定
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition")
 now_jst = datetime.now() + timedelta(hours=9)
 
-# --- 2. UIデザイン修正（サイドバーボタンを最前面へ） ---
+# --- 2. UIデザイン修正（邪魔な要素を排除し、ボタンを露出させる） ---
 st.markdown("""
     <style>
     /* 管理メニューを隠す */
@@ -19,18 +18,12 @@ st.markdown("""
     div[data-testid="stDecoration"] {display: none !important;}
     div[data-testid="stToolbar"] {display: none !important;}
 
-    /* サイドバーを開くボタン( > )を強制的に最前面に出し、色を強調する */
-    button[kind="headerNoPadding"] {
-        background-color: #00d4ff !important;
-        color: white !important;
-        z-index: 9999999 !important;
-        position: fixed !important;
-        top: 10px !important;
-        left: 10px !important;
-        border-radius: 5px !important;
+    /* 画面上部の余白を確保し、ボタンを押しやすくする */
+    .main .block-container {
+        padding-top: 60px !important;
     }
 
-    /* 右下の王冠バッジ */
+    /* 右下の王冠の横にKotchanサイン */
     .kotchan-badge {
         position: fixed;
         bottom: 12px;
@@ -45,32 +38,21 @@ st.markdown("""
         font-weight: bold;
         z-index: 100;
     }
-
-    /* 上部バナー */
-    .top-banner {
-        background-color: #1e1e1e;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 8px solid #00d4ff;
-        margin-top: 30px; /* ボタンとの干渉を防ぐ */
-        margin-bottom: 20px;
-    }
     </style>
-    <div class="kotchan-badge">SYSTEM CERTIFIED BY KOTCHAN</div>
+    <div class="kotchan-badge">MARINE SYSTEM BY KOTCHAN</div>
     """, unsafe_allow_html=True)
 
-# --- 3. メインロゴ ---
-st.markdown("""
-    <div class="top-banner">
-        <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.7rem; margin: 0;">PREMIUM MARINE ANALYTICS SYSTEM</p>
-        <p style="color: white; font-family: 'Impact', sans-serif; font-size: 1.8rem; margin: 0; letter-spacing: 2px;">MODEL BY KOTCHAN</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- 4. サイドバー設定 ---
+# --- 3. サイドバー設定（ここにロゴを移動） ---
 with st.sidebar:
-    st.markdown("### ⚓️ Settings")
-    target_area = st.text_input("ポイント名", value="観音崎", key="v_final_p")
+    st.markdown("""
+        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid #00d4ff; margin-bottom: 20px;">
+            <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.7rem; margin: 0;">PREMIUM ANALYTICS</p>
+            <p style="color: white; font-family: 'Impact', sans-serif; font-size: 1.5rem; margin: 0; letter-spacing: 2px;">MODEL BY KOTCHAN</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.title("⚓️ Settings")
+    target_area = st.text_input("ポイント名", value="観音崎", key="v_p")
     d_input = st.date_input("出船日", value=now_jst.date())
     t_input = st.time_input("狙い時間 (JST)", value=now_jst.time())
     target_style = st.selectbox("釣法セレクト", ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"])
@@ -84,7 +66,7 @@ with st.sidebar:
         return 35.2520, 139.7420
     lat, lon = get_geo(target_area)
 
-# --- 5. データ解析 ---
+# --- 4. データ解析エンジン ---
 @st.cache_data(ttl=300)
 def fetch_all_marine_data(la, lo, d_target):
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
@@ -112,13 +94,16 @@ abs_d = abs(delta)
 star_rating = 3 if abs_d > 15 else 2 if abs_d > 7 else 1
 stars = "★" * star_rating + "☆" * (3 - star_rating)
 
-# --- 6. 解析ボード表示 ---
-st.markdown(f"## 📊 {target_area} 解析結果")
+# --- 5. メイン表示 ---
+st.title(f"📊 {target_area} 解析結果")
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide[:24], fill='tozeroy', line=dict(color='#00d4ff', width=3), fillcolor='rgba(0, 212, 255, 0.1)'))
-fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
+fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b", annotation_text="TARGET")
 fig.update_layout(template="plotly_dark", height=230, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
+
+st.info(f"### 時合期待度: {stars}")
 
 m1, m2, m3, m4 = st.columns(4)
 with m1: st.metric("時角水位変化", f"{delta:+.1f} cm/h")
@@ -126,21 +111,19 @@ with m2: st.metric("現地気圧", f"{c_press:.0f} hPa")
 with m3: st.metric("平均風速", f"{c_wind:.1f} m/s")
 with m4: st.metric("予想波高", f"{c_wave:.1f} m")
 
-# --- 7. キャプテンズ・インテリジェンス（超・濃厚解説版） ---
+# --- 6. キャプテンズ・インテリジェンス（超濃厚解説） ---
 st.divider()
-st.subheader(f"⚓️ キャプテンズ・インテリジェンス報告 ({target_style})")
+st.subheader(f"⚓️ キャプテンズ・インテリジェンス報告")
 
-# 条件別の動的詳細コメント
-weather_comment = f"【風速：{c_wind:.1f}m/s】" + ("強風のためシーアンカー必須、安全第一で。" if c_wind > 10 else "やや風あり、底取り重視の重めシンカーを。" if c_wind > 5 else "べた凪。フィネスな攻略が可能です。")
-tide_comment = f"【潮流：{delta:+.1f}cm/h】" + ("激アツの激流！強波動でリアクションを狙え！" if star_rating == 3 else "安定の流れ。フォール中のバイトに集中！" if star_rating == 2 else "渋い潮止まり。食わせ重視の微細な誘いを。")
-press_comment = f"【気圧：{c_press:.0f}hPa】" + ("低気圧で魚が浮いています。中層まで広く探って！" if c_press < 1008 else "高気圧で魚は底ベタ。タイトにボトムを叩け！")
-
-st.info(f"### 時合期待度: {stars}")
+# 超濃厚・動的テキスト生成ロジック
+tide_desc = f"【潮流分析】現在、水位が1時間で{abs(delta):.1f}cm変化する「{'激流' if abs_d > 15 else '安定'}」の状態です。{'上げ潮' if delta > 0 else '下げ潮'}に乗ってベイトが動くため、{target_style}の基本である「底取りからの巻き上げ」を一段と丁寧に行ってください。"
+weather_desc = f"【海況判断】風速{c_wind:.1f}m/s。{'ドテラ流しでは船が走りすぎるため、シンカーを重くしてライン角度を維持してください。' if c_wind > 6 else '非常に穏やかです。軽い仕掛けでナチュラルに誘うのが正解です。'}"
+press_desc = f"【魚探補足】気圧{c_press:.0f}hPa。{'低気圧の影響で魚の浮き袋が膨らみ、棚が浮いています。中層まで広く探る戦略を！' if c_press < 1010 else '安定した高気圧。魚は底に張り付いています。ボトムから3m以内の攻防を意識してください。'}"
 
 col_a, col_b = st.columns(2)
 with col_a:
-    st.markdown(f"**📝 戦略・タクティクス**\n\n{tide_comment}\n\n* **潮トレンド:** {'上げ潮' if delta > 0 else '下げ潮'}\n* **推奨:** ライン角度が45度を超えないよう調整必須。")
+    st.markdown(f"**📝 戦略・タクティクス**\n\n{tide_desc}\n\n{press_desc}")
 with col_b:
-    st.markdown(f"**🌊 気象・安全管理**\n\n{weather_comment}\n\n{press_comment}\n\n* **波高:** {c_wave:.1f}m。{'揺れを活かしたリトリーブを。' if c_wave > 0.5 else '鏡面。入水角度を注視。'}")
+    st.markdown(f"**🌊 安全・操船アドバイス**\n\n{weather_desc}\n\n* **波高予測:** {c_wave:.1f}m。{'揺れを計算した等速巻きを。' if c_wave > 0.4 else '静かな海面です。微細なアタリを逃さないでください。'}")
 
-st.markdown(f"<p style='text-align: center; color: #444; margin-top: 50px;'>© 2026 Kotchan Marine System</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #444; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
