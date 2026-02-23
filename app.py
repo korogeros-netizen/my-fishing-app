@@ -5,116 +5,134 @@ import requests
 import numpy as np
 from datetime import datetime, timedelta
 
-# --- 1. アプリ基本設定 ---
-st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
+# --- 1. セッション状態の初期化 ---
 now_jst = datetime.now() + timedelta(hours=9)
+if 'target_area' not in st.session_state: st.session_state.target_area = "観音崎"
+if 'd_input' not in st.session_state: st.session_state.d_input = now_jst.date()
+if 't_input' not in st.session_state: st.session_state.t_input = now_jst.time()
+if 'target_style' not in st.session_state: st.session_state.target_style = "タイラバ (真鯛)"
 
-# --- 2. スタイル設定（邪魔な要素を徹底削除） ---
+# --- 2. 基本設定 & スタイル ---
+st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
 st.markdown("""
     <style>
-    /* 管理メニュー、フッター、ヘッダー、装飾をすべて非表示 */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     header {visibility: hidden !important;}
     div[data-testid="stDecoration"] {display: none !important;}
-    div[data-testid="stToolbar"] {display: none !important;}
-    
-    /* 王冠（Deployボタン）対策：右下の余白を確保し、何も置かない */
-    .block-container {
-        padding-bottom: 100px !important;
-    }
-    
-    /* 入力エリアの背景を少し強調 */
-    div[data-testid="stForm"] {
-        border: 2px solid #00d4ff !important;
-        background-color: #1e1e1e !important;
-        border-radius: 15px !important;
+    .block-container { padding-bottom: 120px !important; }
+    /* インテリジェンスセクションの強調 */
+    .report-box {
+        background-color: #0e1117;
+        padding: 20px;
+        border: 1px solid #00d4ff;
+        border-radius: 10px;
+        line-height: 1.6;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. メイン画面最上部：設定ダイレクト入力エリア ---
-# サイドバーを使わず、メイン画面で直接設定できるようにしました
-with st.form("settings_form"):
-    st.markdown("<h3 style='color: #00d4ff; margin:0;'>⚓️ NAVIGATION SETTINGS</h3>", unsafe_allow_html=True)
-    col_input1, col_input2 = st.columns(2)
-    with col_input1:
-        target_area = st.text_input("📍 ポイント名", value="観音崎")
-        target_style = st.selectbox("🎣 釣法", ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"])
-    with col_input2:
-        d_input = st.date_input("📅 出船日", value=now_jst.date())
-        t_input = st.time_input("⏰ 狙い時間", value=now_jst.time())
-    
-    submitted = st.form_submit_button("⚡️ 解析を実行 / 更新")
+# --- 3. 入力エリア (時間固定) ---
+st.markdown("<h3 style='color: #00d4ff;'>⚓️ NAVIGATION SETTINGS</h3>", unsafe_allow_html=True)
+c1, c2 = st.columns(2)
+with c1:
+    st.session_state.target_area = st.text_input("📍 ポイント名", value=st.session_state.target_area)
+    st.session_state.target_style = st.selectbox("🎣 釣法", ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"], 
+                                              index=["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"].index(st.session_state.target_style))
+with c2:
+    st.session_state.d_input = st.date_input("📅 出船日", value=st.session_state.d_input)
+    st.session_state.t_input = st.time_input("⏰ 狙い時間 (JST)", value=st.session_state.t_input)
 
-# --- 4. データ取得エンジン ---
+# --- 4. データ取得 & 解析 ---
+@st.cache_data(ttl=300)
+def fetch_data(la, lo, d):
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d}&end_date={d}"
+    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo&start_date={d}&end_date={d}"
+    try:
+        m_r = requests.get(m_url).json()
+        w_r = requests.get(w_url).json()
+        return m_r['hourly'], w_r['hourly']
+    except: return None, None
+
 def get_geo(query):
     try:
-        url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=1"
-        res = requests.get(url, headers={"User-Agent":"MarineNav_Kotchan_Final"}).json()
-        if res: return float(res[0]["lat"]), float(res[0]["lon"])
+        r = requests.get(f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=1", headers={"User-Agent":"KotchanNav"}).json()
+        if r: return float(r[0]["lat"]), float(r[0]["lon"])
     except: pass
     return 35.2520, 139.7420
 
-lat, lon = get_geo(target_area)
+lat, lon = get_geo(st.session_state.target_area)
+m_data, w_data = fetch_data(lat, lon, st.session_state.d_input.strftime("%Y-%m-%d"))
 
-@st.cache_data(ttl=300)
-def fetch_all_marine_data(la, lo, d_target):
-    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
-    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
-    res = {"tide": None, "wave": None, "press": None, "wind": None}
-    try:
-        m_r = requests.get(m_url, timeout=5).json()
-        w_r = requests.get(w_url, timeout=5).json()
-        res["tide"] = m_r.get('hourly', {}).get('tidal_gaugue_height')
-        res["wave"] = m_r.get('hourly', {}).get('wave_height')
-        res["press"] = w_r.get('hourly', {}).get('pressure_msl')
-        res["wind"] = w_r.get('hourly', {}).get('wind_speed_10m')
-    except: pass
-    return res
-
-data = fetch_all_marine_data(lat, lon, d_input.strftime("%Y-%m-%d"))
-h = t_input.hour
-y_tide = data["tide"] if data["tide"] else [1.0 + 0.4*np.sin(2*np.pi*(t-4)/12.42) for t in range(25)]
-c_wind = data["wind"][h] if (data["wind"] and len(data["wind"])>h) else 0.0
-c_wave = data["wave"][h] if (data["wave"] and len(data["wave"])>h) else 0.0
-c_press = data["press"][h] if (data["press"] and len(data["press"])>h) else 1013.0
+h = st.session_state.t_input.hour
+y_tide = m_data['tidal_gaugue_height'] if m_data else [1.0 + 0.4*np.sin(2*np.pi*(t-4)/12.42) for t in range(25)]
+c_wind = w_data['wind_speed_10m'][h] if w_data else 0.0
+c_wave = m_data['wave_height'][h] if m_data else 0.0
+c_press = w_data['pressure_msl'][h] if w_data else 1013.0
 delta = (y_tide[min(h+1, 24)] - y_tide[h]) * 100
 
-abs_d = abs(delta)
-star_rating = 3 if abs_d > 15 else 2 if abs_d > 7 else 1
-stars = "★" * star_rating + "☆" * (3 - star_rating)
-
-# --- 5. 解析結果表示 ---
-st.markdown(f"<h2 style='text-align:center;'>📊 {target_area} 戦略ボード</h2>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align:center; color:#00d4ff; font-size:1.5rem;'>BY KOTCHAN</p>", unsafe_allow_html=True)
-
+# --- 5. メイン表示 ---
+st.markdown(f"<h2 style='text-align:center;'>📊 {st.session_state.target_area} 戦略ボード <span style='color:#00d4ff;'>BY KOTCHAN</span></h2>", unsafe_allow_html=True)
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide[:24], fill='tozeroy', line=dict(color='#00d4ff', width=3), fillcolor='rgba(0, 212, 255, 0.1)'))
-fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
-fig.update_layout(template="plotly_dark", height=250, margin=dict(l=0, r=0, t=10, b=0))
+fig.add_vline(x=h + st.session_state.t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
+fig.update_layout(template="plotly_dark", height=230, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
-st.success(f"### 時合期待度: {stars}")
-
 m1, m2, m3, m4 = st.columns(4)
-with m1: st.metric("水位変化", f"{delta:+.1f} cm/h")
-with m2: st.metric("気圧", f"{c_press:.0f} hPa")
-with m3: st.metric("風速", f"{c_wind:.1f} m/s")
-with m4: st.metric("波高", f"{c_wave:.1f} m")
+with m1: st.metric("潮位変化量", f"{delta:+.1f} cm/h")
+with m2: st.metric("周辺気圧", f"{c_press:.0f} hPa")
+with m3: st.metric("現地風速", f"{c_wind:.1f} m/s")
+with m4: st.metric("予想波高", f"{c_wave:.1f} m")
 
-# --- 6. キャプテンズ・インテリジェンス（超濃厚解説） ---
+# --- 6. 【超濃厚】キャプテンズ・インテリジェンス報告 ---
 st.divider()
 st.subheader("⚓️ キャプテンズ・インテリジェンス報告")
 
-tide_desc = f"【潮流分析】現在、水位が1時間で{abs(delta):.1f}cm変化する「{'激流' if abs_d > 15 else '安定'}」の状態です。{'上げ潮' if delta > 0 else '下げ潮'}に乗ってベイトが動くため、{target_style}の基本である「底取りからの巻き上げ」を一段と丁寧に行ってください。潮の壁を意識したリトリーブが釣果を分けます。"
-weather_desc = f"【海況判断】風速{c_wind:.1f}m/s。{'ドテラ流しでは船が走りすぎるため、シンカーを重くしてライン角度を維持してください。' if c_wind > 6 else '非常に穏やかです。軽い仕掛けでナチュラルに誘うのが正解です。'}波高{c_wave:.1f}mを考慮した操船を心がけてください。"
-press_desc = f"【魚探補足】気圧{c_press:.0f}hPa。{'低気圧の影響で魚の浮き袋が膨らみ、棚が浮いています。中層まで広く探る戦略が的中します！' if c_press < 1010 else '安定した高気圧。魚は底に張り付いています。ボトムから3m以内のデッドスローな攻防を意識してください。'}"
+# 解析ロジックの構築
+abs_d = abs(delta)
+style = st.session_state.target_style
 
-col_a, col_b = st.columns(2)
-with col_a:
-    st.markdown(f"**📝 戦略・タクティクス**\n\n{tide_desc}\n\n{press_desc}")
-with col_b:
-    st.markdown(f"**🌊 安全・操船アドバイス**\n\n{weather_desc}\n\n* **状況メモ:** 現在の条件では{target_style}のリアクションバイトを誘発しやすい潮回りです。一投ごとに集中してアプローチしてください。")
+# 1. 潮流・釣法連動アドバイス
+if abs_d > 18:
+    tide_text = f"【激流警報】水位変化{delta:+.1f}cm/h。下げ潮の勢いが極めて強く、二枚潮の発生も予想されます。{style}では、ボトムタッチの瞬間を見逃すと即根掛かりに繋がるため、タングステン120g以上の投入を強く推奨。魚の活性は高いですが、流されるラインの「糸ふけ」をいかに殺すかが釣果の分水嶺となります。"
+elif abs_d > 8:
+    tide_text = f"【理想潮流】水位変化{delta:+.1f}cm/h。魚の捕食活動が最も安定する黄金変化量です。{style}において「食わせの間」を作りやすく、特に「上げ潮の3分」にあたるこの時間は、中層のベイトを追う大型個体の回遊が濃厚。まずはボトムから10mを重点的に、等速巻きで誘い切ってください。"
+else:
+    tide_text = f"【緩潮・低活性】変化量わずか{delta:+.1f}cm/h。潮が動かず魚の口が重い時間帯です。通常の誘いでは見切られるため、{style}の重さをあえて落とし、フォールスピードを意識的に遅くしてください。ジグならスローな横引き、タイラバなら極細ネクタイによる微細波動への切り替えが、唯一の突破口になります。"
 
-# 王冠の下に隠れるため、フッターロゴは削除しました
+# 2. 気象・操船連動アドバイス
+if c_wind > 7.0:
+    wind_text = f"【強風警戒】風速{c_wind:.1f}m/s。ドテラ流しでは船が走りすぎ、仕掛けが浮き上がります。シーアンカーで減速させるか、進行方向と逆にスロットルを入れる「あて舵」を。ラインが45度を超えたら即回収、これがトラブル回避の鉄則です。"
+else:
+    wind_text = f"【静穏海況】風速{c_wind:.1f}m/sのベタ凪。船が流れないため、バーチカル一辺倒ではポイントを叩き尽くしてしまいます。アンダーハンドでのチョイ投げで探る範囲を広げてください。静かな海面はプレッシャーも高いため、着水音にも配慮を。"
+
+# 3. 気圧・魚探補正アドバイス
+if c_press < 1008:
+    press_text = f"【低気圧効果】気圧{c_press:.0f}hPa。魚の浮袋が膨張し、棚が2〜3m浮き上がる好条件。ボトムべったりを攻めるよりも、魚探に映るベイト層の上端までリトリーブを伸ばすことで、浮いた大型個体の強烈なバイトを誘発できます。"
+else:
+    press_text = f"【高気圧沈下】気圧{c_press:.0f}hPa。魚はボトムに強く張り付きます。浮き上がりを嫌うため、ルアーをボトムから離しすぎず、底から1m以内をネチネチと叩くような執拗なアプローチが、渋い状況下での一枚を引き出します。"
+
+# 表示
+st.info(f"### 総合評価: {'🔥【爆釣チャンス】' if (abs_d > 10 and c_press < 1012) else '🌊【粘りの攻略が必要】'}")
+
+col_l, col_r = st.columns(2)
+with col_l:
+    st.markdown(f"""
+    <div class="report-box">
+    <strong style='color:#00d4ff;'>📊 潮流・タクティクス</strong><br><br>
+    {tide_text}<br><br>
+    <strong>■ 推奨ウェイト:</strong> {('120g-150g' if abs_d > 15 else '80g-100g')}<br>
+    <strong>■ 狙い棚:</strong> {('ボトムから15mまで広範囲' if c_press < 1010 else '底から3m以内のタイトレンジ')}
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_r:
+    st.markdown(f"""
+    <div class="report-box">
+    <strong style='color:#00d4ff;'>🌊 海況・操船マニュアル</strong><br><br>
+    {wind_text}<br><br>
+    {press_text}<br><br>
+    <strong>■ 安全メモ:</strong> 波高{c_wave:.1f}m。揺れに合わせたリーリングで、ティップの跳ねを抑えてください。
+    </div>
+    """, unsafe_allow_html=True)
