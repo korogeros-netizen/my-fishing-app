@@ -11,7 +11,15 @@ now_jst = datetime.now() + timedelta(hours=9)
 
 # --- 2. サイドバー・ナビゲーター ---
 with st.sidebar:
-    st.markdown("### ⚓️ Navigator Pro")
+    # サイドバーの最上部に名前を刻印
+    st.markdown("""
+        <div style="background-color: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 5px solid #00d4ff; margin-bottom: 20px;">
+            <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.7rem; margin: 0;">DEVELOPED BY</p>
+            <p style="color: white; font-family: 'Impact', sans-serif; font-size: 1.5rem; margin: 0; letter-spacing: 2px;">KOTCHAN</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.title("⚓️ Navigator Pro")
     target_area = st.text_input("ポイント名", value="観音崎", key="v_final_p")
     d_input = st.date_input("出船日", value=now_jst.date(), key="v_final_d")
     t_input = st.time_input("狙い時間 (JST)", value=now_jst.time(), key="v_final_t")
@@ -29,11 +37,6 @@ with st.sidebar:
 
     lat, lon = get_geo(target_area)
     st.write(f"🌐 POS: {lat:.4f}N / {lon:.4f}E")
-    
-    # サイドバー下部にもシグネチャー
-    st.sidebar.markdown("---")
-    st.sidebar.caption("System Version: 1.0.0")
-    st.sidebar.caption("Arch: Kotchan Signature")
 
 # --- 3. データ取得エンジン ---
 @st.cache_data(ttl=300)
@@ -74,13 +77,23 @@ else:
 stars = "★" * star_rating + "☆" * (3 - star_rating)
 
 # --- 5. メイン画面 ---
-st.title(f"📊 {target_area} 航海解析ボード")
+# タイトルとKotchanロゴを並べる
+st.markdown(f"""
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1 style="margin: 0;">📊 {target_area} 航海解析ボード</h1>
+        <div style="text-align: right;">
+            <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.8rem; margin: 0;">MODEL BY</p>
+            <p style="color: white; font-family: 'Impact', sans-serif; font-size: 1.2rem; margin: 0;">KOTCHAN</p>
+        </div>
+    </div>
+    <hr style="margin-top: 5px; margin-bottom: 20px; border: 0; border-top: 1px solid #333;">
+""", unsafe_allow_html=True)
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(25)), y=y_tide, fill='tozeroy', name='潮位(m)', 
                          line=dict(color='#00d4ff', width=3), fillcolor='rgba(0, 212, 255, 0.1)'))
 fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
-fig.update_layout(template="plotly_dark", height=280, margin=dict(l=0, r=0, t=20, b=0))
+fig.update_layout(template="plotly_dark", height=280, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
 st.write(f"### 時合期待度: {stars}")
@@ -105,12 +118,5 @@ with col_a:
 with col_b:
     st.markdown(f"**🌊 気象・安全管理**\n* **気圧影響:** {c_press:.0f}hPa。\n* **操船メモ:** 風速 {c_wind:.1f}m/s。ドテラ流し時のライン角度に注意。")
 
-# --- 7. Kotchan Signature ---
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown("""
-    <div style="text-align: center; padding: 20px; border-top: 1px solid #333;">
-        <p style="color: #555; font-family: 'Courier New', Courier, monospace; letter-spacing: 2px; font-size: 0.8rem;">
-            DESIGNED & ENGINEERED BY <span style="color: #00d4ff; font-weight: bold; font-size: 1rem;">KOTCHAN</span>
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+# 画面最下部にも控えめに配置
+st.markdown(f"<p style='text-align: center; color: #333; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
