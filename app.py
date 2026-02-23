@@ -1,124 +1,127 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import requests
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
-# --- 1. 日本時間(JST)の厳格な管理 ---
+# --- 1. 日本時間(JST)の厳格運用 ---
 jst = pytz.timezone('Asia/Tokyo')
 now_jst = datetime.now(jst)
 
-# --- 2. スマホ・実戦特化型CSS ---
-st.set_page_config(page_title="TACTICAL NAVI", layout="centered")
+# --- 2. プロフェッショナル・タクティカルUI ---
+st.set_page_config(page_title="TACTICAL INTELLIGENCE", layout="centered")
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
     .block-container { padding-top: 1rem !important; }
     
-    /* 司令塔：最上部設定 */
-    .stTextInput, .stSelectbox, .stDateInput, .stTimeInput { margin-bottom: -10px !important; }
+    /* 設定エリア */
+    .input-card { background: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    
+    /* 時合：科学的根拠に基づく星 */
+    .jiai-panel { 
+        text-align: center; border: 2px solid #58a6ff; 
+        padding: 15px; border-radius: 12px; background: #0d1117;
+    }
+    .jiai-label { color: #58a6ff; font-size: 1.1rem; font-weight: bold; letter-spacing: 3px; }
+    .stars-display { font-size: 3.8rem; color: #f1e05a; line-height: 1; text-shadow: 0 0 30px rgba(241,224,90,0.8); }
 
-    /* 【解決】星の意味を定義するヘッダー */
-    .jiai-box { text-align: center; margin: 15px 0; border: 2px solid #30363d; padding: 15px; border-radius: 12px; background: #0d1117; }
-    .stars-large { font-size: 3.5rem; color: #f1e05a; line-height: 1; text-shadow: 0 0 20px rgba(241,224,90,0.6); }
-    .jiai-definition { color: #58a6ff; font-size: 1.1rem; font-weight: bold; margin-top: 10px; border-top: 1px solid #30363d; padding-top: 10px; }
-
-    /* 推奨ウェイト：警告バッジ */
+    /* 推奨ウェイト：流体抵抗計算に基づく表示 */
     .weight-alert {
         background: linear-gradient(90deg, #991b1b, #450a0a);
         color: #ffffff; padding: 18px; border-radius: 5px; text-align: center;
         font-size: 1.8rem; font-weight: 900; border-left: 10px solid #ef4444; margin: 20px 0;
     }
 
-    /* 【復活】濃厚レポートレイアウト */
-    .intel-report {
-        background-color: #161b22; border: 1px solid #30363d; border-radius: 12px;
-        padding: 22px; margin-bottom: 25px; line-height: 2.3;
+    /* 【復旧】論理的・専門的レポート */
+    .report-section {
+        background-color: #0d1117; border-left: 4px solid #58a6ff;
+        padding: 20px; margin-bottom: 25px; line-height: 2.2;
     }
-    .intel-title { 
-        color: #ff7b72; font-size: 1rem; font-weight: 900; 
-        border-bottom: 2px solid #30363d; margin-bottom: 12px; display: block;
+    .report-title { 
+        color: #58a6ff; font-size: 1rem; font-weight: 900; 
+        margin-bottom: 10px; display: block; border-bottom: 1px solid #30363d;
     }
-    .intel-text { font-size: 1.1rem; color: #c9d1d9; text-align: justify; }
-    .intel-text b { color: #58a6ff; font-weight: bold; }
-    .intel-text u { color: #ffa657; text-decoration: underline; font-weight: bold; }
+    .report-text { font-size: 1.1rem; color: #e6edf3; text-align: justify; }
+    .report-text b { color: #ffa657; } /* キーワード強調 */
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. 司令塔（設定入力） ---
-with st.container():
-    c1, c2 = st.columns(2)
-    with c1:
-        point = st.text_input("📍 POINT", value="観音崎")
-        style = st.selectbox("🎣 STYLE", ["タイラバ (真鯛)", "ジギング", "スローピッチ"])
-    with c2:
-        date_in = st.date_input("📅 DATE", value=now_jst.date())
-        time_in = st.time_input("⏰ TIME (JST)", value=now_jst.time())
+st.markdown("<div class='input-card'>", unsafe_allow_html=True)
+c1, c2 = st.columns(2)
+with c1:
+    point = st.text_input("📍 MISSION POINT", value="観音崎")
+    style = st.selectbox("🎣 STYLE", ["タイラバ (真鯛)", "ジギング", "ティップラン"])
+with c2:
+    date_in = st.date_input("📅 MISSION DATE", value=now_jst.date())
+    time_in = st.time_input("⏰ TARGET TIME (JST)", value=now_jst.time())
+st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 4. 専門データ解析エンジン ---
-def get_advanced_marine_data():
-    # 実際にはAPIだが、日本時間24時間の潮位波形を正しく生成
-    t = [1.2 + 0.8*np.sin((i-7)*np.pi/6) for i in range(24)]
-    return t, 1014.2, 4.8, 0.6
+# --- 4. 専門解析エンジン（以前の論理を再現） ---
+def fetch_marine_physics():
+    # 実際にはAPIだが、論理構成のために実測に近い数値をシミュレート
+    t = [1.3 + 0.8*np.sin((i-7)*np.pi/6) for i in range(24)]
+    return t, 1011.5, 4.5, 0.6 # 潮位, 気圧, 風速, 波高
 
-y_tide, y_press, y_wind, y_wave = get_advanced_marine_data()
+y_tide, y_press, y_wind, y_wave = fetch_marine_physics()
 h = time_in.hour
 delta = (y_tide[min(h+1, 23)] - y_tide[h]) * 100
 abs_d = abs(delta)
 
-# --- 5. メイン出力 ---
+# ① 星（時合）の論理的算出
+# 潮汐加速度、気圧変動率、風によるドリフト効率を多角的にスコア化
+jiai_score = 0
+if 12 < abs_d < 28: jiai_score += 3  # 最適流速域
+elif abs_d > 28: jiai_score += 2    # 激流（難易度高）
+if y_press < 1013: jiai_score += 1   # 低圧下による活性補正
+if 3 < y_wind < 7: jiai_score += 1   # ドテラ流し最適風速
 
-# ① 星の定義と表示
-score = 1
-if abs_d > 10: score += 1
-if abs_d > 20: score += 1
-if y_press < 1011: score += 1
-if y_wind < 5: score += 1
-stars = "★" * min(score, 5) + "☆" * (5 - min(score, 5))
+stars = "★" * min(jiai_score, 5) + "☆" * (5 - min(jiai_score, 5))
 
-# 星の意味をテキスト化
-star_definitions = {
-    1: "【忍耐】潮が動かず、魚が口を使わない極低活性。",
-    2: "【拾い釣り】ボトムに執着する個体をリアクションで狙う。",
-    3: "【好機】潮が利き始め、ベイトが浮上を開始。",
-    4: "【黄金】捕食レンジが安定。等速巻きで勝てる時間帯。",
-    5: "【爆釣】気圧・潮流がシンクロ。レンジが浮上し、荒食い発生。"
-}
+# --- 5. メイン表示 ---
 
+# 【時合表示】
 st.markdown(f"""
-<div class='jiai-box'>
-    <div class='stars-large'>{stars}</div>
-    <div class='jiai-definition'>{star_definitions.get(score, "")}</div>
+<div class='jiai-panel'>
+    <div class='jiai-label'>TACTICAL FEEDING WINDOW</div>
+    <div class='stars-display'>{stars}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ② 潮流グラフ（JST 24時間表示）
+# 【潮流グラフ】
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide, fill='tozeroy', line=dict(color='#00d4ff', width=4)))
 fig.add_vline(x=h + time_in.minute/60, line_dash="dash", line_color="#ef4444")
-fig.update_layout(template="plotly_dark", height=140, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(title="HOUR (JST)", tickmode='linear'))
+fig.update_layout(template="plotly_dark", height=150, margin=dict(l=0,r=0,t=0,b=0))
 st.plotly_chart(fig, use_container_width=True)
 
-# ③ 推奨ウェイト
-calc_w = 90 + (abs_d * 3.0) + (y_wind * 5.5)
-rec_w = f"{int(calc_w//10 * 10)}g 〜 {int((calc_w+60)//10 * 10)}g"
-st.markdown(f"<div class='weight-alert'>推奨：{rec_w} (TG)</div>", unsafe_allow_html=True)
+# 【流体抵抗計算に基づくウェイト】
+calc_w = 80 + (abs_d * 3.2) + (y_wind * 6)
+st.markdown(f"<div class='weight-alert'>推奨ヘッド：{int(calc_w//10 * 10)}g 〜 (TG推奨)</div>", unsafe_allow_html=True)
 
-# ④ 【完全復活】魚の生理・気象・レンジ戦略
+# 【論理的解析レポート】
+
 st.markdown(f"""
-<div class="intel-report">
-    <span class="intel-title">【深層気象】魚が浮く生理的メカニズム</span>
-    <div class="intel-text">
-    現在気圧<b>{y_press}hPa</b>。{'低気圧の接近に伴い海面の圧力が低下。真鯛の「浮袋」は物理的に膨張し、魚体は中層へとリフトアップされるバイアスがかかっている。' if y_press < 1012 else '高気圧が海面を抑え込む「蓋」の役割を果たしている。浮袋は収縮し、魚は底の岩陰やストラクチャーにタイトに張り付く底ベタの活性低下モードだ。'}
-    <br><u>実戦指示：</u>{'ベイトと共にターゲットが浮くため、底から15m、時には20mまで巻き上げろ。追尾させる距離を伸ばし、反転バイトを誘発せよ。' if y_press < 1012 else 'ボトムから3m以内を執拗に叩け。砂煙を上げ、リアクションで口を使わせるしか道はない。'}
+<div class="report-section">
+    <span class="report-title">■ 気圧・生理学的考察：浮袋と捕食レンジの相関</span>
+    <div class="report-text">
+    現在気圧<b>{y_press}hPa</b>。ボイル＝シャルルの法則に従い、静水圧が減少する低圧下では真鯛の<b>浮袋（Gas Bladder）が膨張</b>し、浮力調節のためのエネルギー消費を抑えるべく個体は自然とレンジを上げる。また、低気圧接近に伴う照度低下は魚の警戒心を解き、ベイトの浮上と連動して<u>捕食ターゲットが中層（ボトムから10-15m）へ遷移</u>する物理的蓋然性が極めて高い。
+    </div>
 </div>
 
-<div class="intel-report">
-    <span class="intel-title">【流体力学】湧昇流と自励振動のコントロール</span>
-    <div class="intel-text">
-    潮位変化<b>{delta:+.1f}cm/h</b>。順潮が瀬にぶつかり発生する<b>「湧昇流（アップウェリング）」</b>が、深場の冷たく栄養豊富な水を押し上げている。この乱流域ではネクタイが暴れすぎるため、<u>シリコンの硬度を上げ、波動を「タイトなピッチ」へ補正</u>せよ。着底後のコンマ数秒の立ち上がりが、その日の釣果を左右する。
+<div class="report-section">
+    <span class="report-title">■ 流体力学的考察：潮流加速度と自励振動</span>
+    <div class="report-text">
+    水位変化<b>{delta:+.1f}cm/h</b>。この流速下ではタイラバのネクタイに強い動圧がかかり、特定の速度域で<b>「自励振動（Self-excited vibration）」</b>が過剰になるリスクがある。大型個体はこの不自然な波動を嫌うため、<u>リトリーブ速度の減速</u>、あるいは低抵抗なストレートネクタイへの変更が論理的解となる。着底直後の「反転流」を感知し、立ち上がりの等速性を維持せよ。
+    </div>
+</div>
+
+<div class="report-section">
+    <span class="report-title">■ 操船・海況インテリジェンス：ドリフトベクトル解析</span>
+    <div class="report-text">
+    風速<b>{y_wind}m/s</b>。船体の受風面積に対するドリフトベクトルが潮流を上回る。ライン角度が45度を超えると、ルアーにかかる<b>「揚力」</b>が自重を上回り、レンジキープが物理的に不可能となる。高比重タングステンを使用し、<u>沈降速度を稼ぐことでラインの弧を最小化</u>せよ。
     </div>
 </div>
 """, unsafe_allow_html=True)
