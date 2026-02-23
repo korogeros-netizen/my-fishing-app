@@ -9,7 +9,18 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
 now_jst = datetime.now() + timedelta(hours=9)
 
-# --- 2. サイドバー・ナビゲーター ---
+# --- 2. 管理用アイコン（王冠・メニュー）を非表示にする魔法のコード ---
+st.markdown("""
+    <style>
+    /* 右下のStreamlitメニューと王冠を隠す */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display:none;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 3. サイドバー・ナビゲーター ---
 with st.sidebar:
     # サイドバーの最上部に名前を刻印
     st.markdown("""
@@ -38,7 +49,7 @@ with st.sidebar:
     lat, lon = get_geo(target_area)
     st.write(f"🌐 POS: {lat:.4f}N / {lon:.4f}E")
 
-# --- 3. データ取得エンジン ---
+# --- 4. データ取得エンジン ---
 @st.cache_data(ttl=300)
 def fetch_all_marine_data(la, lo, d_target):
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
@@ -63,7 +74,7 @@ c_wave = data["wave"][h] if (data["wave"] and len(data["wave"])>h) else 0.0
 c_press = data["press"][h] if (data["press"] and len(data["press"])>h) else 1013.0
 delta = (y_tide[min(h+1, 24)] - y_tide[h]) * 100
 
-# --- 4. ★星印判定 ---
+# --- 5. ★星印判定 ---
 abs_d = abs(delta)
 star_rating = 0
 if "ジギング" in target_style:
@@ -76,8 +87,7 @@ else:
     star_rating = 3 if 6 < abs_d < 15 else 2
 stars = "★" * star_rating + "☆" * (3 - star_rating)
 
-# --- 5. メイン画面 ---
-# タイトルとKotchanロゴを並べる
+# --- 6. メイン画面 ---
 st.markdown(f"""
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <h1 style="margin: 0;">📊 {target_area} 航海解析ボード</h1>
@@ -118,5 +128,5 @@ with col_a:
 with col_b:
     st.markdown(f"**🌊 気象・安全管理**\n* **気圧影響:** {c_press:.0f}hPa。\n* **操船メモ:** 風速 {c_wind:.1f}m/s。ドテラ流し時のライン角度に注意。")
 
-# 画面最下部にも控えめに配置
+# フッター
 st.markdown(f"<p style='text-align: center; color: #333; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
