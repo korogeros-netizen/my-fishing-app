@@ -9,20 +9,25 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
 now_jst = datetime.now() + timedelta(hours=9)
 
-# --- 2. 管理用アイコン（王冠・メニュー）を非表示にする魔法のコード ---
+# --- 2. 強力な非表示用スクリプト (CSS + 強制非表示) ---
+# これで右下の王冠、右上のメニュー、フッターを徹底的に隠します
 st.markdown("""
     <style>
-    /* 右下のStreamlitメニューと王冠を隠す */
+    /* 全ての管理用要素を非表示 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display:none;}
+    [data-testid="stStatusWidget"] {visibility: hidden;}
+    .stDeployButton {display:none !important;}
+    div[data-testid="stToolbar"] {display: none !important;}
+    div[data-testid="stDecoration"] {display: none !important;}
+    #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 0rem;}
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. サイドバー・ナビゲーター ---
 with st.sidebar:
-    # サイドバーの最上部に名前を刻印
+    # サイドバーの最上部にKotchanシグネチャー
     st.markdown("""
         <div style="background-color: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 5px solid #00d4ff; margin-bottom: 20px;">
             <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.7rem; margin: 0;">DEVELOPED BY</p>
