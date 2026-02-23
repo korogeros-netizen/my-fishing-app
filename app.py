@@ -9,25 +9,29 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
 now_jst = datetime.now() + timedelta(hours=9)
 
-# --- 2. 強力な非表示用スクリプト (CSS + 強制非表示) ---
-# これで右下の王冠、右上のメニュー、フッターを徹底的に隠します
+# --- 2. 【最重要】知り合いに見せないための鉄壁の非表示設定 ---
+# CSSの「!important」を多用し、あらゆる隙間から出てくるアイコンを封じ込めます
 st.markdown("""
     <style>
-    /* 全ての管理用要素を非表示 */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    [data-testid="stStatusWidget"] {visibility: hidden;}
+    /* 右下の王冠（Deployボタン）を消す */
     .stDeployButton {display:none !important;}
-    div[data-testid="stToolbar"] {display: none !important;}
+    /* 右上の三本線メニューを隠す */
+    #MainMenu {visibility: hidden !important;}
+    /* フッター（Made with Streamlit）を隠す */
+    footer {visibility: hidden !important;}
+    /* 上部の余計な装飾バーを消す */
+    header {visibility: hidden !important;}
     div[data-testid="stDecoration"] {display: none !important;}
-    #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 0rem;}
+    /* ツールバー全体を非表示 */
+    div[data-testid="stToolbar"] {display: none !important;}
+    /* 画面上部の余白を詰める */
+    .block-container {padding-top: 1rem !important;}
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. サイドバー・ナビゲーター ---
 with st.sidebar:
-    # サイドバーの最上部にKotchanシグネチャー
+    # Kotchanシグネチャー（ここは友人に絶対に見せたい場所）
     st.markdown("""
         <div style="background-color: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 5px solid #00d4ff; margin-bottom: 20px;">
             <p style="color: #00d4ff; font-family: 'Courier New', monospace; font-size: 0.7rem; margin: 0;">DEVELOPED BY</p>
@@ -54,7 +58,7 @@ with st.sidebar:
     lat, lon = get_geo(target_area)
     st.write(f"🌐 POS: {lat:.4f}N / {lon:.4f}E")
 
-# --- 4. データ取得エンジン ---
+# --- 4. データエンジン ---
 @st.cache_data(ttl=300)
 def fetch_all_marine_data(la, lo, d_target):
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
@@ -79,7 +83,7 @@ c_wave = data["wave"][h] if (data["wave"] and len(data["wave"])>h) else 0.0
 c_press = data["press"][h] if (data["press"] and len(data["press"])>h) else 1013.0
 delta = (y_tide[min(h+1, 24)] - y_tide[h]) * 100
 
-# --- 5. ★星印判定 ---
+# --- 5. ★期待度判定 ---
 abs_d = abs(delta)
 star_rating = 0
 if "ジギング" in target_style:
@@ -121,7 +125,6 @@ with m4: st.metric("予想波高", f"{c_wave:.1f} m" if c_wave > 0 else "穏や�
 
 st.divider()
 st.subheader("⚓️ キャプテンズ・インテリジェンス報告")
-
 if c_wind > 12.0:
     st.error(f"⚠️ 【警告】風速 {c_wind:.1f}m/s。即時中止を検討すべき暴風です。")
 else:
@@ -133,5 +136,4 @@ with col_a:
 with col_b:
     st.markdown(f"**🌊 気象・安全管理**\n* **気圧影響:** {c_press:.0f}hPa。\n* **操船メモ:** 風速 {c_wind:.1f}m/s。ドテラ流し時のライン角度に注意。")
 
-# フッター
-st.markdown(f"<p style='text-align: center; color: #333; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #444; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
