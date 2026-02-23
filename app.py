@@ -9,28 +9,24 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="MARINE NAVIGATOR - Kotchan Edition", layout="wide")
 now_jst = datetime.now() + timedelta(hours=9)
 
-# --- 2. 【最終奥義】王冠をロゴで上書きして封印する ---
+# --- 2. 【鉄壁】王冠・メニューをロゴで封印 ---
 st.markdown("""
     <style>
-    /* 1. 標準のメニューやデコレーションを非表示 */
+    /* 管理用要素を非表示 */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     header {visibility: hidden !important;}
     div[data-testid="stDecoration"] {display: none !important;}
     div[data-testid="stToolbar"] {display: none !important;}
-
-    /* 2. 右下の王冠(Deployボタン)の上にKotchanロゴを被せる */
     .stDeployButton {
         position: fixed;
         bottom: 0px;
         right: 0px;
-        width: 150px; /* 王冠より少し大きく設定 */
+        width: 150px;
         height: 50px;
-        background-color: #0e1117 !important; /* 背景色と同じにして隠す */
+        background-color: #0e1117 !important;
         z-index: 999999;
     }
-    
-    /* 3. 王冠の場所に自分のサインを出す */
     .stDeployButton::after {
         content: '⚓️ KOTCHAN SYSTEM';
         position: fixed;
@@ -41,12 +37,13 @@ st.markdown("""
         font-size: 0.7rem;
         font-weight: bold;
         background-color: #1e1e1e;
-        padding: 5px 10px;
+        padding: 5px 15px;
         border-radius: 20px;
         border: 1px solid #00d4ff;
         visibility: visible;
         z-index: 1000000;
     }
+    .block-container {padding-top: 1.5rem !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -63,7 +60,9 @@ with st.sidebar:
     target_area = st.text_input("ポイント名", value="観音崎", key="v_final_p")
     d_input = st.date_input("出船日", value=now_jst.date(), key="v_final_d")
     t_input = st.time_input("狙い時間 (JST)", value=now_jst.time(), key="v_final_t")
-    target_style = st.selectbox("釣法セレクト", ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"], key="v_final_s")
+    target_style = st.selectbox("釣法セレクト", 
+                                ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"], 
+                                key="v_final_s")
 
     def get_geo(query):
         try:
@@ -72,17 +71,19 @@ with st.sidebar:
             if res: return float(res[0]["lat"]), float(res[0]["lon"])
         except: pass
         return 35.2520, 139.7420
-    lat, lon = get_geo(target_area)
 
-# --- 4. データエンジン & 5. 解析 ---
+    lat, lon = get_geo(target_area)
+    st.write(f"🌐 POS: {lat:.4f}N / {lon:.4f}E")
+
+# --- 4. データ取得エンジン ---
 @st.cache_data(ttl=300)
 def fetch_all_marine_data(la, lo, d_target):
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
     res = {"tide": None, "wave": None, "press": None, "wind": None}
     try:
-        m_r = requests.get(m_url).json()
-        w_r = requests.get(w_url).json()
+        m_r = requests.get(m_url, timeout=5).json()
+        w_r = requests.get(w_url, timeout=5).json()
         res["tide"] = m_r.get('hourly', {}).get('tidal_gaugue_height')
         res["wave"] = m_r.get('hourly', {}).get('wave_height')
         res["press"] = w_r.get('hourly', {}).get('pressure_msl')
@@ -91,6 +92,7 @@ def fetch_all_marine_data(la, lo, d_target):
     return res
 
 data = fetch_all_marine_data(lat, lon, d_input.strftime("%Y-%m-%d"))
+
 h = t_input.hour
 y_tide = data["tide"] if data["tide"] else [1.0 + 0.4*np.sin(2*np.pi*(t-4)/12.42) for t in range(25)]
 c_wind = data["wind"][h] if (data["wind"] and len(data["wind"])>h) else 0.0
@@ -98,12 +100,20 @@ c_wave = data["wave"][h] if (data["wave"] and len(data["wave"])>h) else 0.0
 c_press = data["press"][h] if (data["press"] and len(data["press"])>h) else 1013.0
 delta = (y_tide[min(h+1, 24)] - y_tide[h]) * 100
 
-# 期待度
+# --- 5. ★星印判定 ---
 abs_d = abs(delta)
-star_rating = 3 if abs_d > 12 else 2 if abs_d > 5 else 1
+star_rating = 0
+if "ジギング" in target_style:
+    star_rating = 3 if abs_d > 16 else 2 if abs_d > 8 else 1
+elif "タイラバ" in target_style:
+    star_rating = 3 if 8 < abs_d < 18 else 2 if abs_d <= 8 else 1
+elif "ティップラン" in target_style:
+    star_rating = 3 if 5 < abs_d < 12 else 2 if abs_d <= 5 else 1
+else:
+    star_rating = 3 if 6 < abs_d < 15 else 2
 stars = "★" * star_rating + "☆" * (3 - star_rating)
 
-# --- 6. メイン表示 ---
+# --- 6. メイン画面 ---
 st.markdown(f"""
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <h1 style="margin: 0;">📊 {target_area} 航海解析ボード</h1>
@@ -116,20 +126,47 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=list(range(25)), y=y_tide, fill='tozeroy', line=dict(color='#00d4ff', width=3)))
+fig.add_trace(go.Scatter(x=list(range(25)), y=y_tide, fill='tozeroy', name='潮位(m)', 
+                         line=dict(color='#00d4ff', width=3), fillcolor='rgba(0, 212, 255, 0.1)'))
+fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
 fig.update_layout(template="plotly_dark", height=280, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
 st.write(f"### 時合期待度: {stars}")
+
 m1, m2, m3, m4 = st.columns(4)
 with m1: st.metric("時角水位変化", f"{delta:+.1f} cm/h")
 with m2: st.metric("現地気圧", f"{c_press:.0f} hPa")
 with m3: st.metric("平均風速", f"{c_wind:.1f} m/s")
 with m4: st.metric("予想波高", f"{c_wave:.1f} m" if c_wave > 0 else "穏やか")
 
+# --- 7. キャプテンズ・インテリジェンス（ボリューム復活版） ---
 st.divider()
 st.subheader("⚓️ キャプテンズ・インテリジェンス報告")
-st.success(f"✅ {target_style}に最適化された解析を完了しました。期待度は {stars} です。")
+
+if c_wind > 12.0:
+    st.error(f"⚠️ 【警告】風速 {c_wind:.1f}m/s。時合に関わらず極めて危険な海況です。撤退を推奨します。")
+elif c_wind > 7.0:
+    st.warning(f"⚠️ 【注意】風が強く、ラフな海況です。ドテラ流しの際はシンカー重量の再選定を。")
+else:
+    st.success(f"✅ 【良好】海況は安定しています。{target_style}に集中できる絶好のチャンスです。")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    st.markdown(f"""
+    **📝 潮流・戦略ボード**
+    * **潮位トレンド:** {"上げ潮（満ちてくる潮）" if delta > 0 else "下げ潮（引き潮）"}
+    * **戦略アドバイス:** {f"潮のキレが最高（{delta:+.1f}cm/h）です。{target_style}の王道パターンが最も効く時間帯です。" if star_rating==3 else "潮が緩んでいます。ボトム周辺を丁寧に、リアクション狙いの誘いに切り替えてください。"}
+    * **狙い方:** 魚の活性が上がる「潮の動き出し」と「重なり」を逃さないよう集中してください。
+    """)
+
+with col_b:
+    st.markdown(f"""
+    **🌊 気象・安全管理**
+    * **気圧影響:** {c_press:.0f}hPa。{"低気圧により魚の浮袋が膨らみ、活性が上がる可能性があります。" if c_press < 1010 else "安定した高気圧下です。ボトムに張り付いた個体を丁寧に狙いましょう。"}
+    * **波浪予測:** {c_wave:.1f}m。{"周期の短い波に注意。船酔い対策と足元の安全確保を徹底してください。" if c_wave > 0.6 else "べた凪。微かなアタリも感知可能な、テクニカルな釣りに最適な状況。"}
+    * **操船メモ:** 風速 {c_wind:.1f}m/s。船が風に押される速度を計算し、ラインの角度を45度に保つ操船が必要です。
+    """)
 
 # フッター
 st.markdown(f"<p style='text-align: center; color: #444; margin-top: 50px;'>© 2026 Kotchan Marine Intelligence System</p>", unsafe_allow_html=True)
