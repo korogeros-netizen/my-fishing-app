@@ -6,108 +6,88 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # --- 1. アプリ設定 ---
-st.set_page_config(page_title="OFFSHORE NAVIGATION MASTER PRO", layout="wide")
+st.set_page_config(page_title="OFFSHORE NAVIGATOR ULTIMATE", layout="wide")
 now_jst = datetime.now() + timedelta(hours=9)
 
 # --- 2. 航海ナビゲーター（サイドバー） ---
 with st.sidebar:
     st.title("⚓️ Navigator Pro")
-    target_area = st.text_input("航行区域 / ポイント名", value="石垣島沖", key="p_name")
+    # key設定を厳密にし、再読み込みを確実にする
+    target_area = st.text_input("航行区域 / ポイント名", value="猿島", key="p_name")
     d_input = st.date_input("出船日", value=now_jst.date(), key="d_select")
     t_input = st.time_input("狙い時間 (JST)", value=now_jst.time(), key="t_select")
-    target_style = st.selectbox("釣法セレクト", 
-                                ["タイラバ (真鯛)", "ジギング (青物)", "スローピッチ (根魚)", "ティップラン (イカ)"], 
-                                key="s_select")
+    target_style = st.selectbox("釣法", ["タイラバ (真鯛)", "ジギング (青物)", "ティップラン (イカ)"], key="s_select")
 
-    @st.cache_data
-    def get_geo_cached(query):
+    # 地名から座標を取る（失敗したらデフォルトを返さない設定）
+    def get_geo_strict(query):
         try:
             url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=1"
-            res = requests.get(url, headers={"User-Agent":"MarineNav_Final_v8"}, timeout=5).json()
+            res = requests.get(url, headers={"User-Agent":"MarineNav_Final_v9"}, timeout=5).json()
             if res: return float(res[0]["lat"]), float(res[0]["lon"])
         except: pass
-        return 24.471, 124.238
+        return None, None
 
-    lat, lon = get_geo_cached(target_area)
+    lat, lon = get_geo_strict(target_area)
+    
+    # 座標が取れなかった時の予備（東京湾）
+    if lat is None:
+        lat, lon = 35.29, 139.69 # 猿島付近
+        st.warning(f"⚠️ {target_area}の座標を特定できません。デフォルト座標を使用します。")
+
     st.write(f"🌐 **POS: {lat:.4f}N / {lon:.4f}E**")
 
-# --- 3. 気象・海洋データ統合エンジン ---
+# --- 3. 統合データ取得（エラー処理を強化） ---
 st.title(f"📊 {target_area} 航海解析ボード")
 d_str = d_input.strftime("%Y-%m-%d")
 
 @st.cache_data(ttl=600)
-def fetch_marine_and_weather(la, lo, d_target):
-    # 潮汐・波高(marine)と気圧・風速(weather)のAPIを統合
-    marine_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
-    weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
+def fetch_all_data(la, lo, d_target):
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={la}&longitude={lo}&hourly=tidal_gaugue_height,wave_height&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
+    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={la}&longitude={lo}&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo&start_date={d_target}&end_date={d_target}"
     
-    data = {"tide": None, "wave": None, "pressure": None, "wind": None}
+    res = {"tide": None, "wave": None, "press": None, "wind": None}
     try:
-        m_res = requests.get(marine_url, timeout=5).json()
-        w_res = requests.get(weather_url, timeout=5).json()
-        if 'hourly' in m_res:
-            data["tide"] = m_res['hourly']['tidal_gaugue_height']
-            data["wave"] = m_res['hourly']['wave_height']
-        if 'hourly' in w_res:
-            data["pressure"] = w_res['hourly']['pressure_msl']
-            data["wind"] = w_res['hourly']['wind_speed_10m']
+        m_r = requests.get(m_url, timeout=5).json()
+        w_r = requests.get(w_url, timeout=5).json()
+        if 'hourly' in m_r:
+            res["tide"] = m_r['hourly']['tidal_gaugue_height']
+            res["wave"] = m_r['hourly']['wave_height']
+        if 'hourly' in w_r:
+            res["press"] = w_r['hourly']['pressure_msl']
+            res["wind"] = w_r['hourly']['wind_speed_10m']
     except: pass
-    return data
+    return res
 
-env_data = fetch_marine_and_weather(lat, lon, d_str)
+data = fetch_all_data(lat, lon, d_str)
 
-# データ整理（インデックス取得）
-h_idx = t_input.hour
-y_tide = env_data["tide"][:25] if env_data["tide"] else [1.0]*25
-curr_press = env_data["pressure"][h_idx] if env_data["pressure"] else 1013
-curr_wind = env_data["wind"][h_idx] if env_data["wind"] else 0
-curr_wave = env_data["wave"][h_idx] if env_data["wave"] else 0
+# データ適用（取れなかった時のためのダミー回避）
+h = t_input.hour
+y_tide = data["tide"] if data["tide"] else [0.8 + 0.5 * np.sin(2 * np.pi * (t-4)/12.42) for t in range(25)]
+c_press = data["press"][h] if data["press"] else 1013
+c_wind = data["wind"][h] if data["wind"] else 0
+c_wave = data["wave"][h] if data["wave"] else 0
 
-# --- 4. 潮汐解析と判定 ---
-delta = (y_tide[min(h_idx+1, 24)] - y_tide[h_idx]) * 100
-abs_d = abs(delta)
+# --- 4. 解析表示 ---
+delta = (y_tide[min(h+1, 24)] - y_tide[h]) * 100
 
-# 気圧による潮位補正計算 (1013hPa基準)
-pressure_effect = (1013 - curr_press) 
-
-# --- 5. メイン表示 ---
+# グラフ
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(25)), y=y_tide, fill='tozeroy', name='潮位(m)', line=dict(color='#00d4ff', width=3)))
-fig.add_vline(x=h_idx + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
+fig.add_vline(x=h + t_input.minute/60, line_dash="dash", line_color="#ff4b4b")
 fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
 st.plotly_chart(fig, use_container_width=True)
 
-# 4連デジタルメーター
+# デジタル計器
 c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.metric("時角水位変化", f"{delta:+.1f} cm/h")
-    st.caption("潮流のキレ")
-with c2:
-    st.metric("現地気圧", f"{curr_press:.0f} hPa", f"{pressure_effect:+.1f} cm 補正")
-    st.caption("吸い上げ効果")
-with c3:
-    st.metric("平均風速", f"{curr_wind:.1f} m/s")
-    st.caption("ドテラ流し影響")
-with c4:
-    st.metric("予想波高", f"{curr_wave:.1f} m")
-    st.caption("航行安全目安")
+with c1: st.metric("時角水位変化", f"{delta:+.1f} cm/h")
+with c2: st.metric("現地気圧", f"{c_press:.0f} hPa", f"{(1013-c_press):+.1f} cm 補正")
+with c3: st.metric("平均風速", f"{c_wind:.1f} m/s")
+with c4: st.metric("予想波高", f"{c_wave:.1f} m")
 
-# --- 6. 総合進言 ---
+# --- 5. 船長への最終進言 ---
 st.divider()
-styles = {
-    "タイラバ (真鯛)": {"limit": 6, "msg": "等速巻きが安定する流速です。"},
-    "ジギング (青物)": {"limit": 10, "msg": "ジグの自重を潮に合わせて選択してください。"},
-    "スローピッチ (根魚)": {"limit": 7, "msg": "底取りが遅れる場合は早めの移動を。"},
-    "ティップラン (イカ)": {"limit": 5, "msg": "風による船足の速さに注意。"}
-}
-
-safe_status = "⚠️ 出船注意（強風）" if curr_wind > styles[target_style]["limit"] else "✅ 航行可能"
-
-st.subheader("⚓️ キャプテンへの総合進言")
-st.markdown(f"""
-> **【海況・時合 総合判定：{safe_status}】**
-> 
-> 現在、気圧は **{curr_press:.0f}hPa** です。標準より{'低いため' if pressure_effect > 0 else '高いため'}、実測潮位は計算値より **約{abs(pressure_effect):.1f}cm {'高く' if pressure_effect > 0 else '低く'}** なっている可能性があります。
-> 
-> 風速 **{curr_wind:.1f}m/s**、波高 **{curr_wave:.1f}m**。{styles[target_style]['msg']}
-""")
+safe = "✅ 航行可能" if c_wind < 8 else "⚠️ 出船中止推奨"
+st.markdown(f"### ⚓️ 総合判定: {safe}")
+st.write(f"現在、{target_area}付近は風速 {c_wind:.1f}m/s です。潮位変化は {delta:+.1f}cm/h。")
+if c_wind > 10:
+    st.error("【警告】危険な風速です。ベテランの経験を過信せず、勇気ある撤退を。")
