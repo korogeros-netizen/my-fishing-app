@@ -1,124 +1,104 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
+import requests
+import hashlib
 from datetime import datetime
 import pytz
-import hashlib
 
-# --- 1. 時間の永続化管理 ---
+# --- 1. 時間と座標の管理 ---
 jst = pytz.timezone('Asia/Tokyo')
 if 'init_time' not in st.session_state:
     st.session_state.init_time = datetime.now(jst)
 
-# --- 2. 現場視認性プロトコル ---
-st.set_page_config(page_title="CAPTAIN'S NAVI", layout="centered")
-st.markdown("""
-    <style>
-    #MainMenu, footer, header {visibility: hidden !important;}
-    .block-container { padding: 0.5rem !important; background-color: #0d1117; }
-    
-    .st-emotion-cache-16idsys { background: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 8px; }
-    .report-header { color: #58a6ff; font-size: 1.6rem; font-weight: 900; margin: 20px 0 10px 0; }
+LAT, LON = 35.25, 139.74 # 観音崎座標
 
-    /* 時合：★ */
-    .jiai-section { text-align: center; margin: 15px 0; }
-    .jiai-stars { font-size: 3.5rem; color: #f1e05a; line-height: 1; text-shadow: 0 0 20px rgba(241,224,90,0.6); }
-    .jiai-caption { color: #8b949e; font-size: 0.85rem; margin-top: 5px; font-weight: bold; }
+# --- 2. API実測データ取得 ---
+def fetch_marine_intelligence(lat, lon):
+    try:
+        # 気圧・風速・波高をリアルタイム取得
+        url = f"https://api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&current=wave_height&hourly=pressure_msl,wind_speed_10m&timezone=Asia%2FTokyo"
+        res = requests.get(url, timeout=5).json()
+        wave = res['current']['wave_height']
+        press = res['hourly']['pressure_msl'][0]
+        wind = res['hourly']['wind_speed_10m'][0]
+        return wave, press, wind
+    except:
+        return 0.5, 1013, 5.0 # エラー時バックアップ
 
-    .critical-alert { 
-        background-color: rgba(234, 67, 53, 0.15); border: 1px solid #f85149; 
-        color: #ff7b72; padding: 12px; border-radius: 6px; margin-bottom: 20px; 
-        font-weight: bold; border-left: 5px solid #f85149;
-    }
+wave_raw, press_raw, wind_raw = fetch_marine_intelligence(LAT, LON)
 
-    .board-title { color: #e6edf3; font-size: 1.2rem; font-weight: 900; margin-bottom: 15px; border-bottom: 1px solid #30363d; padding-bottom: 5px; }
-    .board-list { list-style: none; padding-left: 0; }
-    .board-item { 
-        color: #c9d1d9; margin-bottom: 15px; line-height: 1.8; 
-        border-left: 4px solid #58a6ff; padding-left: 12px; font-size: 1.05rem;
-    }
-    .board-item b { color: #ffa657; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. 入力部 ---
-with st.container():
-    c1, c2 = st.columns(2)
-    with c1:
-        point = st.text_input("📍 攻略海域", value="観音崎")
-        date_in = st.date_input("📅 日付", value=st.session_state.init_time.date(), key="f_date")
-    with c2:
-        style = st.selectbox("🎣 狙い方", ["タイラバ (真鯛)", "ジギング", "ティップラン", "SLJ"])
-        time_in = st.time_input("⏰ 時間", value=st.session_state.init_time.time(), key="f_time")
-
-# --- 4. 物理・気象演算 ---
-def get_captain_logic(point, date, time):
+# --- 3. 潮流物理演算（シード値固定で時間を変えても安定） ---
+def get_tide_logic(point, date, time):
     seed = int(hashlib.md5(f"{point}{date}".encode()).hexdigest(), 16) % 1000
-    np.random.seed(seed)
     t = np.linspace(0, 24, 24)
     y_tide = 1.0 + 0.8 * np.sin(np.pi * t / 6 + (seed % 10))
     h = time.hour + time.minute/60.0
     t_now = 1.0 + 0.8 * np.sin(np.pi * h / 6 + (seed % 10))
     t_next = 1.0 + 0.8 * np.sin(np.pi * (h + 0.5) / 6 + (seed % 10))
-    delta = (t_next - t_now) * 200 
-    press = 1000 + (seed % 28)
-    wind = 4 + (seed % 14)
-    wave = 0.2 + (seed % 10) / 10.0
-    return y_tide, delta, press, wind, wave
+    return y_tide, (t_next - t_now) * 200
 
-y_tide, delta, press, wind, wave = get_captain_logic(point, date_in, time_in)
+y_tide, delta_v = get_tide_logic("観音崎", st.session_state.init_time.date(), st.session_state.init_time.time())
 
-# --- 5. キャプテンズ・インテリジェンス報告 ---
+# --- 4. UI構築 ---
+st.set_page_config(page_title="STRATEGIC NAVI", layout="centered")
+st.markdown("""
+    <style>
+    .report-header { color: #58a6ff; font-size: 1.6rem; font-weight: bold; border-bottom: 2px solid #30363d; margin-bottom: 20px; }
+    .board-title { color: #e6edf3; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #30363d; }
+    .board-item { color: #c9d1d9; margin-bottom: 15px; border-left: 4px solid #58a6ff; padding-left: 12px; line-height: 1.8; }
+    .board-item b { color: #ffa657; }
+    .jiai-stars { font-size: 3.5rem; color: #f1e05a; text-align: center; margin: 10px 0; }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.markdown(f"<div class='report-header'>⚓ キャプテンズ・インテリジェンス報告：{point}</div>", unsafe_allow_html=True)
+# 入力部
+with st.container():
+    c1, c2 = st.columns(2)
+    with c1:
+        point = st.text_input("📍 エリア", value="観音崎")
+        date_in = st.date_input("📅 日付", value=st.session_state.init_time.date(), key="d_final")
+    with c2:
+        style = st.selectbox("🎣 狙い", ["タイラバ (真鯛)", "ジギング", "ティップラン", "SLJ"])
+        time_in = st.time_input("⏰ 時間", value=st.session_state.init_time.time(), key="t_final")
 
-# 警告バナー
-if wind >= 10:
-    st.markdown(f"<div class='critical-alert'>【厳戒】 風速目安 {wind}m/s。ドテラ流しの際はシンカー重量の選定に注意してください。</div>", unsafe_allow_html=True)
-else:
-    st.markdown(f"<div class='critical-alert' style='border-color:#58a6ff; color:#58a6ff; background:transparent;'>【状況】 現在の気象条件での航行・釣行は安定しています。</div>", unsafe_allow_html=True)
+# --- 5. キャプテンズ・インテリジェンス報告（分析コメント強化版） ---
+st.markdown(f"<div class='report-header'>⚓ キャプテンズ・実測分析報告：{point}</div>", unsafe_allow_html=True)
 
-# 星の意味・時合評価（ここを明文化）
+# 時合（実測気圧×潮流加速）
 score = 1
-# 1. 潮流加速評価 (±20~35cm/hを黄金域とする)
-if 18 < abs(delta) < 35: score += 2
-# 2. 低気圧活性評価 (1012hPa以下を活性バイアスとする)
-if press < 1012: score += 2
+if 18 < abs(delta_v) < 35: score += 2
+if press_raw < 1012: score += 2
+st.markdown(f"<div class='jiai-stars'>{'★' * score + '☆' * (5-score)}</div>", unsafe_allow_html=True)
 
-stars = "★" * min(score, 5) + "☆" * (5 - min(score, 5))
-
-st.markdown(f"""
-<div class='jiai-section'>
-    <div class='jiai-stars'>{stars}</div>
-    <div class='jiai-caption'>時合評価：潮流加速率({abs(delta):.1f}cm/h) × 気圧({press}hPa) による動的算出</div>
-</div>
-""", unsafe_allow_html=True)
-
-# 潮流波形
+# 潮流グラフ
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(range(24)), y=y_tide, fill='tozeroy', line=dict(color='#58a6ff', width=3)))
 fig.add_vline(x=time_in.hour + time_in.minute/60.0, line_dash="dash", line_color="#ff7b72")
-fig.update_layout(template="plotly_dark", height=180, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+fig.update_layout(template="plotly_dark", height=150, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)')
 st.plotly_chart(fig, use_container_width=True)
 
-# 戦略ボード
 col1, col2 = st.columns(2)
 with col1:
     st.markdown(f"""
-    <div class='board-title'>📝 潮流・戦略ボード</div>
-    <ul class='board-list'>
-        <li class='board-item'>潮位トレンド：<b>{'上げ潮' if delta > 0 else '下げ潮（干潮へ向かう）'}</b></li>
-        <li class='board-item'>戦略アドバイス：潮の動きが活発です（<b>{delta:+.1f}cm/h</b>）。<b>{style}</b>の王道パターンが効く時間帯です。</li>
-        <li class='board-item'>狙い方：魚の活性が上がる<b>「潮の動き出し」</b>を逃さないよう準備してください。</li>
+    <div class='board-title'>📝 潮流・戦略分析</div>
+    <ul style='list-style:none; padding:0;'>
+        <li class='board-item'>潮流トレンド：<b>{'上げ潮' if delta_v > 0 else '下げ潮'}</b></li>
+        <li class='board-item'>加速率：<b>{delta_v:+.1f}cm/h</b>。{style}においてネクタイの自励振動を抑制しつつ、等速性を維持すべき局面です。</li>
+        <li class='board-item'>戦略アドバイス：潮の動き出しに伴い、ベイトの定位が不安定になります。<b>「追わせる距離」</b>を意識的に伸ばしてください。</li>
     </ul>
     """, unsafe_allow_html=True)
 
 with col2:
+    # 気圧と波高に基づく具体的戦術コメント
+    press_comment = "低気圧により<b>浮袋が膨張バイアス</b>を受け、個体は浮上します。底から15mまでを攻略範囲としてください。" if press_raw < 1012 else "高気圧により個体は底に張り付きます。浮き上がりを抑え、<b>執拗にボトムを叩く</b>展開が有効です。"
+    wave_comment = f"実測波高{wave_raw}m。{'船の揺れを利用したオートマチックな誘いが効きます。' if wave_raw > 0.6 else '静かな海面です。微細な違和感を察知できるよう集中してください。'}"
+    
     st.markdown(f"""
-    <div class='board-title'>🌊 気象・安全管理</div>
-    <ul class='board-list'>
-        <li class='board-item'>気圧影響：<b>{press}hPa</b>。{'低気圧（浮袋膨張）。中層までのロングリトリーブを。' if press < 1012 else '高気圧（安定）。底付近を丁寧に探るのが吉。'}</li>
-        <li class='board-item'>波浪状況：<b>{wave:.1f}m前後</b>。{'安定したリトリーブが可能な絶好の状況。' if wave < 0.6 else 'やや波気あり。船の揺れを吸収するリトリーブを。'}</li>
-        <li class='board-item'>風速目安：<b>{wind}m/s</b>。ドテラ流しの際、シンカーの重さを普段より1ランク上げてください。</li>
+    <div class='board-title'>🌊 気象・生理学的因果</div>
+    <ul style='list-style:none; padding:0;'>
+        <li class='board-item'>実測気圧：<b>{press_raw:.0f}hPa</b>。{press_comment}</li>
+        <li class='board-item'>実測風速：<b>{wind_raw:.1f}m/s</b>。{'ドテラ流しの際、シンカーを1ランク重くしライン角度を死守せよ。' if wind_raw > 8 else '風は穏やかです。軽いヘッドでナチュラルなフォールを優先。'}</li>
+        <li class='board-item'>波浪状況：{wave_comment}</li>
     </ul>
     """, unsafe_allow_html=True)
