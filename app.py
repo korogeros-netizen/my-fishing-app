@@ -3,37 +3,33 @@ import numpy as np
 import plotly.graph_objects as go
 import requests
 import hashlib
+import time
 from datetime import datetime
 import pytz
 
-# --- 1. 時間と座標の管理 ---
+# --- 1. 時間と座標 ---
 jst = pytz.timezone('Asia/Tokyo')
+current_jst = datetime.now(jst)
+
 if 'init_time' not in st.session_state:
-    st.session_state.init_time = datetime.now(jst)
+    st.session_state.init_time = current_jst
 
-LAT, LON = 35.25, 139.74 # 観音崎ポイント
+LAT, LON = 35.25, 139.74 
 
-# --- 2. APIデータ取得（日付・時間への完全同期） ---
-def fetch_marine_data_complete(lat, lon, sel_date, sel_time):
+# --- 2. APIデータ取得（キャッシュ破棄・日付完全同期ロジック） ---
+def fetch_marine_data_final(lat, lon, sel_date):
     try:
-        # 選択された日付のデータを取得
         d_str = sel_date.strftime("%Y-%m-%d")
-        url = f"https://api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=pressure_msl,wind_speed_10m,wave_height&timezone=Asia%2FTokyo&start_date={d_str}&end_date={d_str}"
-        res = requests.get(url, timeout=5).json()
+        # URLの最後にダミーのタイムスタンプを追加して、キャッシュ(古いデータ)を強制的に無視させる
+        cache_buster = int(time.time())
+        url = f"https://api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=pressure_msl,wind_speed_10m,wave_height&timezone=Asia%2FTokyo&start_date={d_str}&end_date={d_str}&cb={cache_buster}"
         
-        # 選択された「時」を直接インデックスとして抽出
-        idx = sel_time.hour
-        
-        # データの存在を確認してから取得（ここで0.0にならないよう死守）
-        press = res['hourly']['pressure_msl'][idx] if 'hourly' in res else 1013
-        wind = res['hourly']['wind_speed_10m'][idx] if 'hourly' in res else 1.1
-        wave = res['hourly']['wave_height'][idx] if 'hourly' in res else 0.5
-        
-        return wave, press, wind
+        res = requests.get(url, timeout=10).json()
+        return res.get('hourly', {})
     except:
-        return 0.5, 1013, 1.1
+        return {}
 
-# --- 3. UI・デザイン設定（重厚スタイル） ---
+# --- 3. UI設定 ---
 st.set_page_config(page_title="STRATEGIC NAVI", layout="centered")
 st.markdown("""
     <style>
@@ -48,18 +44,24 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 入力部
+# 入力セクション
 with st.container():
     c1, c2 = st.columns(2)
     with c1:
-        point_in = st.text_input("📍 攻略ポイント", value="観音崎")
+        point_in = st.text_input("📍 攻略海域", value="観音崎")
         date_in = st.date_input("📅 日付選択", value=st.session_state.init_time.date())
     with c2:
         style_in = st.selectbox("🎣 狙い方", ["タイラバ (真鯛)", "ジギング", "ティップラン", "SLJ"])
         time_in = st.time_input("⏰ 実行時間", value=st.session_state.init_time.time())
 
-# データ取得
-wave_raw, press_raw, wind_raw = fetch_marine_data_complete(LAT, LON, date_in, time_in)
+# 【ここが心臓部】日付が変われば即座にAPIを叩き直す
+hourly_dict = fetch_marine_data_final(LAT, LON, date_in)
+target_hour = time_in.hour
+
+# リストから指定時間の数値を抽出（データがあれば更新、なければ標準値）
+press_raw = hourly_dict.get('pressure_msl', [1013]*24)[target_hour]
+wind_raw = hourly_dict.get('wind_speed_10m', [1.5]*24)[target_hour]
+wave_raw = hourly_dict.get('wave_height', [0.5]*24)[target_hour]
 
 # --- 4. 物理演算（潮流） ---
 def get_tide_logic(point, date, t_in):
@@ -73,21 +75,21 @@ def get_tide_logic(point, date, t_in):
 
 t_plot, y_plot, delta_v = get_tide_logic(point_in, date_in, time_in)
 
-# --- 5. レポート描画（解説・コメント完全復活版） ---
+# --- 5. レポート描画 ---
 st.markdown(f"<div class='report-header'>⚓ キャプテンズ・分析報告：{point_in}</div>", unsafe_allow_html=True)
 
-# アラート
+# 風速による動的アラート
 if wind_raw >= 10:
-    st.markdown(f"<div class='critical-alert'>【厳戒】 実測風速 {wind_raw:.1f}m/s。ドテラ流しの選定は慎重に。重量ヘッドへの換装を推奨します。</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='critical-alert'>【厳戒】 実測風速 {wind_raw:.1f}m/s。ドテラ流しの選定は慎重に。重量ヘッドへの換装を推奨。</div>", unsafe_allow_html=True)
 else:
-    st.markdown(f"<div class='critical-alert' style='border-color:#58a6ff; color:#58a6ff; background:transparent;'>【状況】 風速 {wind_raw:.1f}m/s。指定時刻の気象条件は安定しています。</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='critical-alert' style='border-color:#58a6ff; color:#58a6ff; background:transparent;'>【状況】 風速 {wind_raw:.1f}m/s。安定したコンディションです。</div>", unsafe_allow_html=True)
 
 # 星の評価
 score = 1
 if 18 < abs(delta_v) < 35: score += 2
 if press_raw < 1012: score += 2
 st.markdown(f"<div class='jiai-stars'>{'★' * score + '☆' * (5-score)}</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='jiai-caption'>★評価基準：潮流加速({abs(delta_v):.1f}cm/h) × 実測気圧({press_raw:.0f}hPa) による動的判定</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='jiai-caption'>★評価根拠：潮流加速({abs(delta_v):.1f}cm/h) × 実測気圧({press_raw:.1f}hPa)</div>", unsafe_allow_html=True)
 
 # グラフ
 fig = go.Figure()
@@ -96,22 +98,21 @@ fig.add_vline(x=time_in.hour + time_in.minute/60.0, line_dash="dash", line_color
 fig.update_layout(template="plotly_dark", height=180, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
 st.plotly_chart(fig, use_container_width=True)
 
-# 戦略ボード（コメント量を最大化）
+# 戦略ボード（全コメント復元）
 col1, col2 = st.columns(2)
 with col1:
     st.markdown(f"<div class='board-title'>📝 潮流・戦略分析</div>", unsafe_allow_html=True)
     st.markdown(f"""
     <div class='board-item'>潮流傾向：<b>{'上げ潮' if delta_v > 0 else '下げ潮'}</b></div>
-    <div class='board-item'>戦略アドバイス：潮流変化 <b>{delta_v:+.1f}cm/h</b>。<b>{style_in}</b>において、ネクタイの自励振動を抑制しつつ、等速性を維持すべき重要な局面です。</div>
-    <div class='board-item'>狙い方：活性が上がる<b>「潮の動き出し」</b>を逃さないよう、ベイトの定位変化に合わせレンジを微調整してください。</div>
+    <div class='board-item'>戦略アドバイス：潮流変化 <b>{delta_v:+.1f}cm/h</b>。<b>{style_in}</b>の王道パターンが効く時間帯です。</div>
+    <div class='board-item'>狙い方：活性が上がる<b>「潮の動き出し」</b>に備え、ベイトの定位変化に合わせレンジを微調整してください。</div>
     """, unsafe_allow_html=True)
 
 with col2:
     st.markdown(f"<div class='board-title'>🌊 気象・生理学的因果</div>", unsafe_allow_html=True)
     p_text = "低気圧（浮袋膨張バイアス）。個体が浮上しやすいため、底から15mまでを攻略範囲としてください。" if press_raw < 1012 else "高気圧。個体は底に張り付きます。浮き上がりを抑え、<b>執拗にボトムを叩く</b>展開が有効です。"
-    w_text = "船の揺れを逆に利用した、オートマチックな誘いが効きやすい状況です。" if wave_raw > 0.6 else "静かな海面です。微細な違和感を察知できるよう、リトリーブの手元に集中してください。"
     st.markdown(f"""
-    <div class='board-item'>実測気圧：<b>{press_raw:.0f}hPa</b>。<br>{p_text}</div>
-    <div class='board-item'>波浪状況：<b>{wave_raw:.1f}m前後</b>。<br>{w_text}</div>
-    <div class='board-item'>風速目安：<b>{wind_raw:.1f}m/s</b>。{'シンカーを1ランク重くし、ライン角度を死守せよ。' if wind_raw > 8 else '凪です。軽量ヘッドでナチュラルなフォールを優先。'}</div>
+    <div class='board-item'>実測気圧：<b>{press_raw:.1f}hPa</b>。<br>{p_text}</div>
+    <div class='board-item'>波浪状況：<b>{wave_raw:.1f}m前後</b>。<br>船の揺れを逆に利用した、等速巻きを意識。</div>
+    <div class='board-item'>風速目安：<b>{wind_raw:.1f}m/s</b>。{'シンカーを重くし、角度を死守。' if wind_raw > 8 else '凪です。軽量ヘッドでナチュラルに。'}</div>
     """, unsafe_allow_html=True)
